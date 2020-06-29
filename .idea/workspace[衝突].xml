@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ChangeListManager">
+    <list default="true" id="75a86908-1649-494e-99cc-2d20996a1381" name="Default Changelist" comment="" />
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="JavaScript File" />
+        <option value="Python Script" />
+      </list>
+    </option>
+  </component>
+  <component name="ProjectId" id="1c6ZdbKlCLhWv8AJKqweCiABQFJ" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">
+    <property name="RunOnceActivity.OpenProjectViewOnStart" value="true" />
+    <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
+    <property name="WebServerToolWindowFactoryState" value="false" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$/metrics" />
+    <property name="node.js.detected.package.eslint" value="true" />
+    <property name="node.js.detected.package.tslint" value="true" />
+    <property name="node.js.path.for.package.eslint" value="project" />
+    <property name="node.js.path.for.package.tslint" value="project" />
+    <property name="node.js.selected.package.eslint" value="(autodetect)" />
+    <property name="node.js.selected.package.tslint" value="(autodetect)" />
+    <property name="settings.editor.selected.configurable" value="reference.settingsdialog.IDE.editor.colors" />
+  </component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/metrics" />
+    </key>
+  </component>
+  <component name="SvnConfiguration">
+    <configuration />
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="75a86908-1649-494e-99cc-2d20996a1381" name="Default Changelist" comment="" />
+      <created>1589851091370</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1589851091370</updated>
+      <workItem from="1589851092675" duration="594000" />
+      <workItem from="1589851704696" duration="2168000" />
+      <workItem from="1589938508605" duration="411000" />
+      <workItem from="1590214734542" duration="30361000" />
+      <workItem from="1590773840804" duration="15984000" />
+      <workItem from="1591859247450" duration="375000" />
+      <workItem from="1591859629629" duration="15000" />
+      <workItem from="1591859648641" duration="2000" />
+      <workItem from="1591859682392" duration="16000" />
+      <workItem from="1591859714968" duration="24235000" />
+      <workItem from="1592142151346" duration="505000" />
+      <workItem from="1592144626600" duration="129000" />
+      <workItem from="1592146674463" duration="2618000" />
+      <workItem from="1592405059152" duration="449000" />
+      <workItem from="1592809820556" duration="3714000" />
+      <workItem from="1593018665996" duration="6722000" />
+      <workItem from="1593096350838" duration="1450000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="2" />
+  </component>
+  <component name="WindowStateProjectService">
+    <state x="981" y="336" key="#com.intellij.fileTypes.FileTypeChooser" timestamp="1591951490888">
+      <screen x="0" y="23" width="1680" height="1027" />
+    </state>
+    <state x="981" y="336" key="#com.intellij.fileTypes.FileTypeChooser/-145.-1057.1920.1057/0.23.1680.1027@0.23.1680.1027" timestamp="1591951490888" />
+    <state x="410" y="185" key="SettingsEditor" timestamp="1591859897517">
+      <screen x="0" y="23" width="1680" height="1027" />
+    </state>
+    <state x="-1451" y="190" key="SettingsEditor/-1920.23.1920.1057/0.23.1680.1027@-1920.23.1920.1057" timestamp="1590630646679" />
+    <state x="410" y="185" key="SettingsEditor/0.23.1680.1027@0.23.1680.1027" timestamp="1591859897517" />
+    <state x="-1252" y="160" width="584" height="783" key="find.popup" timestamp="1590630661442">
+      <screen x="-1920" y="23" width="1920" height="1057" />
+    </state>
+    <state x="-1252" y="160" width="584" height="783" key="find.popup/-1920.23.1920.1057/0.23.1680.1027@-1920.23.1920.1057" timestamp="1590630661442" />
+    <state x="1585" y="348" width="670" height="676" key="search.everywhere.popup" timestamp="1592131624692">
+      <screen x="0" y="23" width="2560" height="1417" />
+    </state>
+    <state x="1585" y="348" width="670" height="676" key="search.everywhere.popup/2560.200.1920.1057/0.23.2560.1417@0.23.2560.1417" timestamp="1592131624692" />
+  </component>
+</project>
