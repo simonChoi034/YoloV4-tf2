@@ -79,7 +79,7 @@ ACTIVATIONS = {
     "mish": Mish(),
     "leaky_relu": LeakyReLU(),
     "relu": ReLU(),
-    "linear": Activation("linear", dtype=tf.float32, name="Output float32 casting")
+    "linear": Activation("linear", dtype=tf.float32, name="Output-float32-casting")
 }
 
 
@@ -89,7 +89,7 @@ class MyConv2D(Layer):
             filters: int,
             kernel_size: Union[List, int],
             strides: int = 1,
-            dilation_rate: int = 1,
+            dilation_rate: float = 1,
             padding: str = "same",
             activation: Union[None, str] = "leaky_relu",
             apply_batchnorm: bool = True,

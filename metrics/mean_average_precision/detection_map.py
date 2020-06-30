@@ -1,8 +1,10 @@
+import math
+
+import matplotlib.pyplot as plt
 import numpy as np
+
 from metrics.mean_average_precision.ap_accumulator import APAccumulator
 from metrics.mean_average_precision.utils.bbox import jaccard
-import math
-import matplotlib.pyplot as plt
 
 DEBUG = False
 
@@ -156,13 +158,14 @@ class DetectionMAP:
             self.plot_pr(ax, class_name, precisions, recalls, average_precision)
             mean_average_precision.append(average_precision)
 
-        plt.suptitle("Mean average precision : {:0.2f}".format(sum(mean_average_precision)/len(mean_average_precision)))
+        plt.suptitle(
+            "Mean average precision : {:0.2f}".format(sum(mean_average_precision) / len(mean_average_precision)))
         fig.tight_layout()
 
     def get_mAP(self, interpolated=True, separate_class=False):
         mean_average_precision = []
         # TODO: data structure not optimal for this operation...
-        for i in enumerate(self.n_class):
+        for i in range(self.n_class):
             if i > self.n_class - 1:
                 break
             precisions, recalls = self.compute_precision_recall_(i, interpolated)

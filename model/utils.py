@@ -6,25 +6,9 @@ import tensorflow as tf
 from config import cfg
 
 
-# anchors
-class Anchors:
-    def __init__(self, image_size: int):
-        self.yolo_anchors = np.array([(10, 13), (16, 30), (33, 23), (30, 61), (62, 45), (59, 119), (116, 90), (156, 198), (373, 326)], np.float32)
-        self.yolo_anchor_masks = np.array([[6, 7, 8], [3, 4, 5], [0, 1, 2]])
-        self.image_size = image_size
-
-    def set_image_size(self, image_size: int):
-        self.image_size = image_size
-
-    def get_anchors(self) -> np.ndarray:
-        return self.yolo_anchors / self.image_size
-
-    def get_anchor_masks(self) -> np.ndarray:
-        return self.yolo_anchor_masks
-
-
 @tf.function
-def output_transform(pred: tf.Tensor, anchors: np.ndarray, num_class: int) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
+def output_transform(pred: tf.Tensor, anchors: np.ndarray, num_class: int) -> Tuple[
+    tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
     # pred: (batch_size, grid, grid, anchors, (x, y, w, h, obj, ...classes))
     grid_size = tf.shape(pred)[1]
     box_xy, box_wh, objectness, class_probs = tf.split(
@@ -61,8 +45,9 @@ def flatten_output(outputs: Tuple[tf.Tensor, tf.Tensor, tf.Tensor]) -> Tuple[tf.
 
 
 @tf.function
-def non_max_suppression(inputs: Tuple[tf.Tensor, tf.Tensor, tf.Tensor], iou_threshold: float = 0.45,
-                        score_threshold: float = 0.3) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
+def non_max_suppression(inputs: Tuple[tf.Tensor, tf.Tensor, tf.Tensor], iou_threshold: float = cfg.yolo_iou_threshold,
+                        score_threshold: float = cfg.yolo_score_threshold) -> Tuple[
+    tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
     anchors = cfg.anchors.get_anchors()
     anchor_masks = cfg.anchors.get_anchor_masks()
 

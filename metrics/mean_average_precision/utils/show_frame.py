@@ -1,9 +1,10 @@
-import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import matplotlib.pyplot as plt
 import numpy as np
 
 
-def show_frame(pred_bb, pred_classes, pred_conf, gt_bb, gt_classes, background=np.zeros((500, 500, 3)), show_confidence=True):
+def show_frame(pred_bb, pred_classes, pred_conf, gt_bb, gt_classes, background=np.zeros((500, 500, 3)),
+               show_confidence=True):
     """
     Plot the boundingboxes
     :param pred_bb: (np.array)      Predicted Bounding Boxes [x1, y1, x2, y2] :     Shape [n_pred, 4]
@@ -56,4 +57,3 @@ def show_frame(pred_bb, pred_classes, pred_conf, gt_bb, gt_classes, background=n
         legend_handles.append(patches.Patch(color=cmap(float(i) / n_class), label="class : {}".format(i)))
     ax.legend(handles=legend_handles)
     plt.show()
-

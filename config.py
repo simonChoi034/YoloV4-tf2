@@ -1,5 +1,6 @@
 from easydict import EasyDict
-from model.utils import Anchors
+
+from model.anchor import Anchors
 
 cfg = EasyDict()
 
@@ -10,8 +11,8 @@ cfg.yolo_iou_threshold = 0.45
 cfg.label_smoothing_factor = 0.1
 cfg.image_size = 512
 cfg.buffer_size = 150
-cfg.batch_size = 4
-cfg.sub_division = 4
+cfg.batch_size = 32
+cfg.sub_division = 16
 cfg.prefetch_size = 5
 cfg.lr_init = 1e-3
 cfg.lr_end = 1e-6

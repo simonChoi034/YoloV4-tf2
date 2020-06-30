@@ -2,7 +2,7 @@ from typing import Union
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.losses import Loss, binary_crossentropy
+from tensorflow.keras.losses import Loss, BinaryCrossentropy
 
 from config import cfg
 from model.utils import output_transform
@@ -12,13 +12,13 @@ class YOLOv4Loss(Loss):
     def __init__(
             self,
             num_class: int,
-            yolo_score_threshold: float = 0.5,
-            label_smoothing_factor: float = 0.0,
+            yolo_score_threshold: float,
+            label_smoothing_factor: float,
             use_focal_loss: bool = False,
             use_focal_obj_loss: bool = False,
             use_giou_loss: bool = False,
             use_diou_loss: bool = False,
-            use_ciou_loss: bool = True):
+            use_ciou_loss: bool = False):
         super(YOLOv4Loss, self).__init__()
         self.num_class = num_class
         self.yolo_score_threshold = yolo_score_threshold
@@ -30,6 +30,31 @@ class YOLOv4Loss(Loss):
         self.use_ciou_loss = use_ciou_loss
         self.anchors = cfg.anchors.get_anchors()
         self.anchor_masks = cfg.anchors.get_anchor_masks()
+        self.binary_crossentropy = BinaryCrossentropy(label_smoothing=self.label_smoothing_factor)
+
+    @staticmethod
+    def broadcast_iou(box_1, box_2):
+        # box_1: (..., (x1, y1, x2, y2))
+        # box_2: (N, (x1, y1, x2, y2))
+
+        # broadcast boxes
+        box_1 = tf.expand_dims(box_1, -2)
+        box_2 = tf.expand_dims(box_2, 0)
+        # new_shape: (..., N, (x1, y1, x2, y2))
+        new_shape = tf.broadcast_dynamic_shape(tf.shape(box_1), tf.shape(box_2))
+        box_1 = tf.broadcast_to(box_1, new_shape)
+        box_2 = tf.broadcast_to(box_2, new_shape)
+
+        int_w = tf.maximum(tf.minimum(box_1[..., 2], box_2[..., 2]) -
+                           tf.maximum(box_1[..., 0], box_2[..., 0]), 0)
+        int_h = tf.maximum(tf.minimum(box_1[..., 3], box_2[..., 3]) -
+                           tf.maximum(box_1[..., 1], box_2[..., 1]), 0)
+        int_area = int_w * int_h
+        box_1_area = (box_1[..., 2] - box_1[..., 0]) * \
+                     (box_1[..., 3] - box_1[..., 1])
+        box_2_area = (box_2[..., 2] - box_2[..., 0]) * \
+                     (box_2[..., 3] - box_2[..., 1])
+        return int_area / (box_1_area + box_2_area - int_area)
 
     @staticmethod
     def iou(box_1: tf.Tensor, box_2: tf.Tensor) -> tf.Tensor:
@@ -44,17 +69,19 @@ class YOLOv4Loss(Loss):
                      (box_1[..., 3] - box_1[..., 1])
         box_2_area = (box_2[..., 2] - box_2[..., 0]) * \
                      (box_2[..., 3] - box_2[..., 1])
-        return int_area / (box_1_area + box_2_area - int_area)
+
+        iou = int_area / (box_1_area + box_2_area - int_area)
+        return iou
 
     @staticmethod
     def smooth_labels(y_true: tf.Tensor, label_smoothing: Union[tf.Tensor, float]) -> tf.Tensor:
-        label_smoothing = tf.constant(label_smoothing, dtype=tf.float16)
+        label_smoothing = tf.constant(label_smoothing, dtype=tf.float32)
         return y_true * (1.0 - label_smoothing) + 0.5 * label_smoothing
 
     @staticmethod
     def giou(box_1: tf.Tensor, box_2: tf.Tensor) -> tf.Tensor:
-        # box_1: (batch_size, grid_y, grid_x, (x1, y1, x2, y2))
-        # box_2: (batch_size, grid_y, grid_x, (x1, y1, x2, y2))
+        # box_1: (batch_size, grid_y, grid_x, N, (x1, y1, x2, y2))
+        # box_2: (batch_size, grid_y, grid_x, N, (x1, y1, x2, y2))
         int_w = tf.maximum(tf.minimum(box_1[..., 2], box_2[..., 2]) -
                            tf.maximum(box_1[..., 0], box_2[..., 0]), 0)
         int_h = tf.maximum(tf.minimum(box_1[..., 3], box_2[..., 3]) -
@@ -77,8 +104,8 @@ class YOLOv4Loss(Loss):
 
     @staticmethod
     def ciou(box_1: tf.Tensor, box_2: tf.Tensor) -> tf.Tensor:
-        # box_1: (batch_size, grid_y, grid_x, (x1, y1, x2, y2))
-        # box_2: (batch_size, grid_y, grid_x, (x1, y1, x2, y2))
+        # box_1: (batch_size, grid_y, grid_x, N, (x1, y1, x2, y2))
+        # box_2: (batch_size, grid_y, grid_x, N, (x1, y1, x2, y2))
         left = tf.maximum(box_1[..., 0], box_2[..., 0])
         up = tf.maximum(box_1[..., 1], box_2[..., 1])
         right = tf.maximum(box_1[..., 2], box_2[..., 2])
@@ -87,14 +114,24 @@ class YOLOv4Loss(Loss):
         c = (right - left) * (right - left) + (up - down) * (up - down)
         iou = YOLOv4Loss.iou(box_1, box_2)
 
-        u = (box_1[..., 0] - box_2[..., 0]) * (box_1[..., 0] - box_2[..., 0]) + (
-                box_1[..., 1] - box_2[..., 1]) * (box_1[..., 1] - box_2[..., 1])
+        ax = (box_1[..., 0] + box_1[..., 2]) / 2
+        ay = (box_1[..., 1] + box_1[..., 3]) / 2
+        bx = (box_2[..., 0] + box_2[..., 2]) / 2
+        by = (box_2[..., 1] + box_2[..., 3]) / 2
+
+        u = (ax - bx) * (ax - bx) + (ay - by) * (ay - by)
         d = u / c
 
-        ar_gt = box_2[..., 2] / box_2[..., 3]
-        ar_pred = box_1[..., 2] / box_1[..., 3]
+        aw = box_1[..., 2] - box_1[..., 0]
+        ah = box_1[..., 3] - box_1[..., 1]
+        bw = box_2[..., 2] - box_2[..., 0]
+        bh = box_2[..., 3] - box_2[..., 1]
 
-        ar_loss = 4 / (np.pi * np.pi) * (tf.atan(ar_gt) - tf.atan(ar_pred)) * (tf.atan(ar_gt) - tf.atan(ar_pred))
+        ar_gt = bw / (bh + 0.000001)
+        ar_pred = aw / (ah + 0.000001)
+
+        ar_loss = 4 / (np.pi * np.pi) * (tf.atan(ar_gt) - tf.atan(ar_pred)) * (
+                tf.atan(ar_gt) - tf.atan(ar_pred))
         alpha = ar_loss / (1 - iou + ar_loss + 0.000001)
         ciou_term = d + alpha * ar_loss
 
@@ -102,8 +139,8 @@ class YOLOv4Loss(Loss):
 
     @staticmethod
     def diou(box_1: tf.Tensor, box_2: tf.Tensor) -> tf.Tensor:
-        # box_1: (batch_size, grid_y, grid_x, (x1, y1, x2, y2))
-        # box_2: (batch_size, grid_y, grid_x, (x1, y1, x2, y2))
+        # box_1: (batch_size, grid_y, grid_x, N, (x1, y1, x2, y2))
+        # box_2: (batch_size, grid_y, grid_x, N, (x1, y1, x2, y2))
         left = tf.maximum(box_1[..., 0], box_2[..., 0])
         up = tf.maximum(box_1[..., 1], box_2[..., 1])
         right = tf.maximum(box_1[..., 2], box_2[..., 2])
@@ -112,14 +149,20 @@ class YOLOv4Loss(Loss):
         c = (right - left) * (right - left) + (up - down) * (up - down)
         iou = YOLOv4Loss.iou(box_1, box_2)
 
-        u = (box_1[..., 0] - box_2[..., 0]) * (box_1[..., 0] - box_2[..., 0]) + (
-                box_1[..., 1] - box_2[..., 1]) * (box_1[..., 1] - box_2[..., 1])
-        d = u / (c + 0.000001)
+        ax = (box_1[..., 0] + box_1[..., 2]) / 2
+        ay = (box_1[..., 1] + box_1[..., 3]) / 2
+        bx = (box_2[..., 0] + box_2[..., 2]) / 2
+        by = (box_2[..., 1] + box_2[..., 3]) / 2
+
+        u = (ax - bx) * (ax - bx) + (ay - by) * (ay - by)
+        d = u / c
 
         return iou - d
 
-    def focal_loss(self, y_true: tf.Tensor, y_pred: tf.Tensor, gamma: Union[tf.Tensor, float] = 2.0, alpha: Union[tf.Tensor, float] = 0.25) -> tf.Tensor:
-        sigmoid_loss = binary_crossentropy(y_true, y_pred)
+    def focal_loss(self, y_true: tf.Tensor, y_pred: tf.Tensor, gamma: Union[tf.Tensor, float] = 2.0,
+                   alpha: Union[tf.Tensor, float] = 0.25) -> tf.Tensor:
+        sigmoid_loss = self.binary_crossentropy(y_true, y_pred)
+        sigmoid_loss = tf.expand_dims(sigmoid_loss, axis=-1)
 
         p_t = ((y_true * y_pred) + ((1 - y_true) * (1 - y_pred)))
         modulating_factor = tf.pow(1.0 - p_t, gamma)
@@ -147,7 +190,7 @@ class YOLOv4Loss(Loss):
         true_box_coor = tf.concat([true_xy - true_wh * 0.5, true_xy + true_wh * 0.5], axis=-1)
 
         # label_smoothing
-        true_class = YOLOv4Loss.smooth_labels(true_wh, self.label_smoothing_factor)
+        true_class = YOLOv4Loss.smooth_labels(true_class, self.label_smoothing_factor)
 
         # give higher weights to small boxes
         box_loss_scale = 2 - true_wh[..., 0] * true_wh[..., 1]
@@ -155,11 +198,11 @@ class YOLOv4Loss(Loss):
         # 3. calculate all masks
         obj_mask = tf.squeeze(true_obj, -1)
         # ignore false positive when iou is over threshold
-        best_iou = tf.map_fn(
-            lambda x:
-            (tf.reduce_max(YOLOv4Loss.iou(x[0], tf.boolean_mask(x[1], tf.cast(x[2], tf.bool))), axis=-1)),
-            (pred_box_coor, true_box_coor, obj_mask)
-        )
+        best_iou, _, _ = tf.map_fn(
+            lambda x: (tf.reduce_max(YOLOv4Loss.broadcast_iou(x[0], tf.boolean_mask(
+                x[1], tf.cast(x[2], tf.bool))), axis=-1), 0, 0),
+            (pred_box_coor, true_box_coor, obj_mask))
+
         ignore_mask = tf.cast(best_iou < self.yolo_score_threshold, tf.float32)
 
         # 4. inverting the pred box equations
@@ -175,14 +218,14 @@ class YOLOv4Loss(Loss):
         if self.use_focal_obj_loss:
             confidence_loss = self.focal_loss(true_obj, pred_obj)
         else:
-            confidence_loss = binary_crossentropy(true_obj, pred_obj)
+            confidence_loss = self.binary_crossentropy(true_obj, pred_obj)
             confidence_loss = obj_mask * confidence_loss + (1 - obj_mask) * ignore_mask * confidence_loss
 
         # class loss
         if self.use_focal_loss:
             class_loss = self.focal_loss(true_class, pred_class)
         else:
-            class_loss = obj_mask * binary_crossentropy(true_class, pred_class)
+            class_loss = obj_mask * self.binary_crossentropy(true_class, pred_class)
 
         # box loss
         if self.use_giou_loss:

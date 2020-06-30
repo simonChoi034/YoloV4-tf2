@@ -15,7 +15,7 @@ class COCO2017Dataset:
             num_class: int = cfg.num_class,
             mode: Any = tfds.Split.TRAIN,
             image_size: int = cfg.image_size,
-            batch_size: int = cfg.batch_size,
+            batch_size: int = cfg.batch_size // cfg.sub_division,
             buffer_size: int = cfg.buffer_size,
             prefetch_size: int = cfg.prefetch_size):
         self.dataset = tfds.load(name=dataset, split=mode)
@@ -33,24 +33,24 @@ class COCO2017Dataset:
 
     def map_func(self, feature: tf.Tensor) -> Dict:
         image = feature["image"]
-        img_shape = image.shape[1:3]
+        bbox = feature["objects"]["bbox"]
+        num_of_bbox = tf.shape(bbox)[0]
 
-        bbox = tf.numpy_function(self.transform_bbox, inp=[feature["objects"]["bbox"], img_shape])
+        bbox = tf.numpy_function(self.transform_bbox, inp=[bbox, image], Tout=tf.float32)
 
         label_small, label_medium, label_large = tf.numpy_function(self.map_label_func,
-                                                                   inp=[bbox, feature["objects"]["label"]])
+                                                                   inp=[bbox, feature["objects"]["label"]],
+                                                                   Tout=[tf.float32, tf.float32, tf.float32])
         image = self.map_image_func(image)
 
-        bbox = tf.numpy_function(self.pad_class, inp=[bbox, feature["objects"]["label"]])
-        bbox, i = tf.numpy_function(self.pad_bbox, inp=[bbox])
+        bbox = self.pad_class(bbox, feature["objects"]["label"])
+        bbox = self.pad_bbox(bbox)
 
         feature_dict = {
             "image": image,
-            "label_small": label_small,
-            "label_medium": label_medium,
-            "label_large": label_large,
+            "label": (label_small, label_medium, label_large),
             "bbox": bbox,
-            "num_of_bbox": i
+            "num_of_bbox": num_of_bbox
         }
 
         return feature_dict
@@ -62,6 +62,9 @@ class COCO2017Dataset:
         bbox_max = bbox[..., 2:4]
         bbox[..., 0:2] = (bbox_min + bbox_max) / 2
         bbox[..., 2:4] = bbox_max - bbox_min
+
+        # clip value
+        bbox = np.clip(bbox, a_min=0.0, a_max=1 - 1e-7)
 
         # convert to yolo label format
         # bbox = [[x,y,w,h],...] shape=(1, n, 4)
@@ -92,14 +95,11 @@ class COCO2017Dataset:
 
     def create_yolo_label(self, bbox: np.ndarray, label: np.ndarray, anchor_mask: np.ndarray, anchor_idx: np.ndarray,
                           grid_size: int) -> np.ndarray:
-        # bbox.shape = (1, n, 4)
-        # label.shape = (1, n)
-        # anchor_idx.shape = (1, n)
+        # bbox.shape = (n, 4)
+        # label.shape = (n)
+        # anchor_idx.shape = (n)
         # girds.shape = (grid_size, grid_size, B x (5 + N))
-        grids = np.zeros((grid_size, grid_size, anchor_mask.shape[0], (5 + self.num_class)))
-        bbox = tf.squeeze(bbox, axis=0)
-        label = tf.squeeze(label, axis=0)
-        anchor_idx = tf.squeeze(anchor_idx, axis=0)
+        grids = np.zeros((grid_size, grid_size, anchor_mask.shape[0], (5 + self.num_class)), dtype=np.float32)
 
         # put
         for box, class_id, anchor_id in zip(bbox, label, anchor_idx):
@@ -114,18 +114,20 @@ class COCO2017Dataset:
 
                 grid_array = np.asarray([box[0], box[1], box[2], box[3], 1])
                 class_array = np.zeros(self.num_class)
-                class_array[int(label)] = 1
+                class_array[int(class_id)] = 1
 
                 # grid[y][x][anchor] = [tx, ty, bw, bh, obj, ...class_id]
                 grids[grid_xy[1]][grid_xy[0]][box_index] = np.append(grid_array, class_array)
 
-        return np.expand_dims(grids, axis=0)
+        return grids
 
-    def transform_bbox(self, bbox: np.ndarray, original_image_size: np.ndarray) -> np.ndarray:
+    def transform_bbox(self, bbox: np.ndarray, image: np.ndarray) -> np.ndarray:
         # bbox = [y_min, x_min, y_max, x_max] => [x_min, y_min, x_max, y_max]
-        # bbox.shape: (1, n, 4)
+        # bbox.shape: (n, 4)
         bbox[..., 0:2] = bbox[..., 0:2][::-1]
         bbox[..., 2:4] = bbox[..., 2:4][::-1]
+
+        original_image_size = image.shape[0:2]
 
         # rescale bbox to fit new image size
         orig_img_h, orig_img_w = original_image_size[0], original_image_size[1]
@@ -133,32 +135,33 @@ class COCO2017Dataset:
         ratio_w = min(target_img_w / orig_img_w, target_img_h / orig_img_h)
         ratio_h = min(target_img_w / orig_img_w, target_img_h / orig_img_h)
 
-        multiplier = np.asarray([ratio_w, ratio_h, ratio_w, ratio_h])
+        multiplier = np.asarray([ratio_w, ratio_h, ratio_w, ratio_h], dtype=np.float32)
 
-        return bbox * multiplier
+        bbox = bbox * multiplier
 
-    def pad_bbox(self, bbox: np.ndarray) -> Tuple[np.ndarray, int]:
-        # bbox.shape = (1, n, 5)
-        num_of_bbox = bbox.shape[1]
-        num_of_padding = self.max_bbox_size - num_of_bbox
+        return bbox
 
-        # return first max_size of bbox if number of bounding box over the maximum limit
-        if num_of_padding <= 0:
-            return bbox[:, :self.max_bbox_size, :], self.max_bbox_size
-        else:
-            # pad zero to match shape (1, 100, 5)
-            padded_zero = np.zeros((1, num_of_padding, bbox.shape[2]))
-            bbox = np.concatenate([bbox, padded_zero], axis=1)
-            return bbox, num_of_bbox
+    def pad_bbox(self, bbox: tf.Tensor) -> Tuple[tf.Tensor]:
+        # bbox.shape = (n, 5)
+        bbox = tf.expand_dims(bbox, axis=-1)  # bbox.shape = (n, 5, 1)
+        bbox = tf.image.pad_to_bounding_box(bbox, 0, 0, self.max_bbox_size, tf.shape(bbox)[1])
 
-    def pad_class(self, bbox: np.ndarray, label: np.ndarray) -> np.ndarray:
-        # bbox.shape = (1, n, 4)
-        # label.shape = (1, n)
-        label = np.reshape(label, (1, -1, 1))
-        return np.concatenate([bbox, label], axis=1)
+        bbox = tf.squeeze(bbox)
+
+        return bbox
+
+    def pad_class(self, bbox: tf.Tensor, label: tf.Tensor) -> tf.Tensor:
+        # bbox.shape = (n, 4)
+        # label.shape = (n)
+        label = tf.cast(tf.reshape(label, (-1, 1)), tf.float32)
+        label = tf.concat([bbox, label], axis=1)
+        return label
 
     def get_dataset(self):
-        dataset = self.dataset.map(self.map_func).shuffle(self.buffer_size).batch(self.batch_size).prefetch(
-            self.prefetch_size)
+        dataset = self.dataset.filter(lambda x: tf.shape(x["objects"]["bbox"])[0] != 0) \
+            .map(self.map_func) \
+            .shuffle(self.buffer_size) \
+            .batch(self.batch_size) \
+            .prefetch(self.prefetch_size)
 
         return dataset
