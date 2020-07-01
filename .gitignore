@@ -131,3 +131,4 @@ dmypy.json
 **/*.pyc
 checkpoints/*
 logs/*
+.idea/*

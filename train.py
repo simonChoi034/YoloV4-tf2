@@ -49,9 +49,9 @@ class Trainer:
         self.lr_end = cfg.lr_end
         self.warmup_epochs = cfg.warmup_epochs
         self.train_epochs = cfg.train_epochs
-        self.warmup_steps = self.warmup_epochs * dataset_train.num_of_training_img
-        self.total_steps = self.train_epochs * dataset_train.num_of_training_img
-        self.step_to_validate = 1000
+        self.warmup_steps = self.warmup_epochs * dataset_train.num_of_img / self.batch_size
+        self.total_steps = self.train_epochs * dataset_train.num_of_img / self.batch_size
+        self.step_to_validate = cfg.step_to_validate
 
         # define model and loss
         self.model = YOLOv4(num_class=self.num_class)

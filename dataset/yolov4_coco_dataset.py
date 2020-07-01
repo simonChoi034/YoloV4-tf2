@@ -19,6 +19,7 @@ class COCO2017Dataset:
             buffer_size: int = cfg.buffer_size,
             prefetch_size: int = cfg.prefetch_size):
         self.dataset = tfds.load(name=dataset, split=mode)
+        self.num_of_img = cfg.num_of_img
         self.num_class = num_class
         self.image_size = image_size  # [height, width]
         self.batch_size = batch_size
@@ -27,9 +28,6 @@ class COCO2017Dataset:
         self.max_bbox_size = 100
         self.anchors = cfg.anchors.get_anchors()
         self.anchor_masks = cfg.anchors.get_anchor_masks()
-
-        # number of training image of coco2017
-        self.num_of_training_img = 118287
 
     def map_func(self, feature: tf.Tensor) -> Dict:
         image = feature["image"]
