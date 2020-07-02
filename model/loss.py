@@ -2,6 +2,7 @@ from typing import Union
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.keras import backend as K
 from tensorflow.keras.losses import Loss, BinaryCrossentropy
 
 from config import cfg
@@ -17,7 +18,6 @@ class YOLOv4Loss(Loss):
             use_focal_loss: bool = False,
             use_focal_obj_loss: bool = False,
             use_giou_loss: bool = False,
-            use_diou_loss: bool = False,
             use_ciou_loss: bool = False):
         super(YOLOv4Loss, self).__init__()
         self.num_class = num_class
@@ -26,7 +26,6 @@ class YOLOv4Loss(Loss):
         self.use_focal_obj_loss = use_focal_obj_loss
         self.use_focal_loss = use_focal_loss
         self.use_giou_loss = use_giou_loss
-        self.use_diou_loss = use_diou_loss
         self.use_ciou_loss = use_ciou_loss
         self.anchors = cfg.anchors.get_anchors()
         self.anchor_masks = cfg.anchors.get_anchor_masks()
@@ -106,58 +105,48 @@ class YOLOv4Loss(Loss):
     def ciou(box_1: tf.Tensor, box_2: tf.Tensor) -> tf.Tensor:
         # box_1: (batch_size, grid_y, grid_x, N, (x1, y1, x2, y2))
         # box_2: (batch_size, grid_y, grid_x, N, (x1, y1, x2, y2))
-        left = tf.maximum(box_1[..., 0], box_2[..., 0])
-        up = tf.maximum(box_1[..., 1], box_2[..., 1])
-        right = tf.maximum(box_1[..., 2], box_2[..., 2])
-        down = tf.maximum(box_1[..., 3], box_2[..., 3])
+        box_1 = tf.concat([tf.minimum(box_1[..., :2], box_1[..., 2:]),
+                           tf.maximum(box_1[..., :2], box_1[..., 2:])], axis=-1)
+        box_2 = tf.concat([tf.minimum(box_2[..., :2], box_2[..., 2:]),
+                           tf.maximum(box_2[..., :2], box_2[..., 2:])], axis=-1)
 
-        c = (right - left) * (right - left) + (up - down) * (up - down)
-        iou = YOLOv4Loss.iou(box_1, box_2)
+        # box area
+        box_1_w, box_1_h = box_1[..., 2] - box_1[..., 0], box_1[..., 3] - box_1[..., 1]
+        box_2_w, box_2_h = box_2[..., 2] - box_2[..., 0], box_2[..., 3] - box_2[..., 1]
+        box_1_area = box_1_w * box_1_h
+        box_2_area = box_2_w * box_2_h
 
-        ax = (box_1[..., 0] + box_1[..., 2]) / 2
-        ay = (box_1[..., 1] + box_1[..., 3]) / 2
-        bx = (box_2[..., 0] + box_2[..., 2]) / 2
-        by = (box_2[..., 1] + box_2[..., 3]) / 2
+        # find iou
+        left_up = tf.maximum(box_1[..., :2], box_2[..., :2])
+        right_down = tf.minimum(box_1[..., 2:], box_2[..., 2:])
 
-        u = (ax - bx) * (ax - bx) + (ay - by) * (ay - by)
-        d = u / c
+        inter_section = tf.maximum(right_down - left_up, 0.0)
+        inter_area = inter_section[..., 0] * inter_section[..., 1]
+        union_area = box_1_area + box_2_area - inter_area
+        iou = inter_area / (union_area + K.epsilon())
 
-        aw = box_1[..., 2] - box_1[..., 0]
-        ah = box_1[..., 3] - box_1[..., 1]
-        bw = box_2[..., 2] - box_2[..., 0]
-        bh = box_2[..., 3] - box_2[..., 1]
+        # find enclosed area
+        enclose_left_up = tf.minimum(box_1[..., :2], box_2[..., :2])
+        enclose_right_down = tf.maximum(box_1[..., 2:], box_2[..., 2:])
 
-        ar_gt = bw / (bh + 0.000001)
-        ar_pred = aw / (ah + 0.000001)
+        enclose_wh = enclose_right_down - enclose_left_up
+        enclose_c2 = tf.square(enclose_wh[..., 0]) + tf.square(enclose_wh[..., 1])
 
-        ar_loss = 4 / (np.pi * np.pi) * (tf.atan(ar_gt) - tf.atan(ar_pred)) * (
-                tf.atan(ar_gt) - tf.atan(ar_pred))
-        alpha = ar_loss / (1 - iou + ar_loss + 0.000001)
-        ciou_term = d + alpha * ar_loss
+        box_1_center_x = (box_1[..., 0] + box_1[..., 2]) / 2
+        box_1_center_y = (box_1[..., 1] + box_1[..., 3]) / 2
+        box_2_center_x = (box_2[..., 0] + box_2[..., 2]) / 2
+        box_2_center_y = (box_2[..., 1] + box_2[..., 3]) / 2
 
-        return iou - ciou_term
+        p2 = tf.square(box_1_center_x - box_2_center_x) + tf.square(box_1_center_y - box_2_center_y)
 
-    @staticmethod
-    def diou(box_1: tf.Tensor, box_2: tf.Tensor) -> tf.Tensor:
-        # box_1: (batch_size, grid_y, grid_x, N, (x1, y1, x2, y2))
-        # box_2: (batch_size, grid_y, grid_x, N, (x1, y1, x2, y2))
-        left = tf.maximum(box_1[..., 0], box_2[..., 0])
-        up = tf.maximum(box_1[..., 1], box_2[..., 1])
-        right = tf.maximum(box_1[..., 2], box_2[..., 2])
-        down = tf.maximum(box_1[..., 3], box_2[..., 3])
+        # and epsilon to prevent nan
+        atan1 = tf.atan(box_1_w / (box_1_h + K.epsilon()))
+        atan2 = tf.atan(box_2_w / (box_2_h + K.epsilon()))
+        v = 4.0 * tf.square(atan1 - atan2) / (np.pi ** 2)
+        a = v / (1 - iou + v)
 
-        c = (right - left) * (right - left) + (up - down) * (up - down)
-        iou = YOLOv4Loss.iou(box_1, box_2)
-
-        ax = (box_1[..., 0] + box_1[..., 2]) / 2
-        ay = (box_1[..., 1] + box_1[..., 3]) / 2
-        bx = (box_2[..., 0] + box_2[..., 2]) / 2
-        by = (box_2[..., 1] + box_2[..., 3]) / 2
-
-        u = (ax - bx) * (ax - bx) + (ay - by) * (ay - by)
-        d = u / c
-
-        return iou - d
+        ciou = iou - 1.0 * p2 / enclose_c2 - 1.0 * a * v
+        return ciou
 
     def focal_loss(self, y_true: tf.Tensor, y_pred: tf.Tensor, gamma: Union[tf.Tensor, float] = 2.0,
                    alpha: Union[tf.Tensor, float] = 0.25) -> tf.Tensor:
@@ -231,9 +220,6 @@ class YOLOv4Loss(Loss):
         if self.use_giou_loss:
             giou = self.giou(pred_box_coor, true_box_coor)
             box_loss = obj_mask * box_loss_scale * (1 - giou)
-        elif self.use_diou_loss:
-            diou = self.diou(pred_box_coor, true_box_coor)
-            box_loss = obj_mask * box_loss_scale * (1 - diou)
         elif self.use_ciou_loss:
             ciou = self.ciou(pred_box_coor, true_box_coor)
             box_loss = obj_mask * box_loss_scale * (1 - ciou)

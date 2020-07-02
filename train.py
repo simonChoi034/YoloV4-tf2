@@ -103,7 +103,7 @@ class Trainer:
             t_size = cv2.getTextSize(bbox_mess, 0, fontScale, thickness=bbox_thick // 2)[0]
             cv2.rectangle(image, (x1, y1), (x1 + t_size[0], y1 - t_size[1] - 3), colors[cls], -1)  # filled
 
-            cv2.putText(image, bbox_mess, (x1, x2 - 2), cv2.FONT_HERSHEY_SIMPLEX,
+            cv2.putText(image, bbox_mess, (x1, y1 - 2), cv2.FONT_HERSHEY_SIMPLEX,
                         fontScale, (0, 0, 0), bbox_thick // 2, lineType=cv2.LINE_AA)
 
         return np.expand_dims(image, 0)
