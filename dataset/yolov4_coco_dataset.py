@@ -4,6 +4,7 @@ from typing import Dict, Tuple, Any
 import numpy as np
 import tensorflow as tf
 import tensorflow_datasets as tfds
+from tensorflow.keras import backend as K
 
 from config import cfg
 
@@ -62,7 +63,7 @@ class COCO2017Dataset:
         bbox[..., 2:4] = bbox_max - bbox_min
 
         # clip value
-        bbox = np.clip(bbox, a_min=0.0, a_max=1 - 1e-7)
+        bbox = np.clip(bbox, a_min=0.0, a_max=1 - K.epsilon())
 
         # convert to yolo label format
         # bbox = [[x,y,w,h],...] shape=(1, n, 4)
@@ -152,7 +153,7 @@ class COCO2017Dataset:
         # bbox.shape = (n, 4)
         # label.shape = (n)
         label = tf.cast(tf.reshape(label, (-1, 1)), tf.float32)
-        label = tf.concat([bbox, label], axis=1)
+        label = tf.concat([bbox, label], axis=-1)
         return label
 
     def get_dataset(self):

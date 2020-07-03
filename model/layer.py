@@ -114,7 +114,7 @@ class MyConv2D(Layer):
         self.batch_norm = BatchNormalization()
         self.drop_block = DropBlock(keep_prob=keep_prob, block_size=dropblock_size)
 
-    def call(self, inputs: tf.Tensor, training: bool = None, **kwargs) -> tf.Tensor:
+    def call(self, inputs: tf.Tensor, training: bool = False, **kwargs) -> tf.Tensor:
         x = self.conv2d(inputs)
         if self.apply_batchnorm:
             x = self.batch_norm(x, training=training)
@@ -138,7 +138,7 @@ class CSPBlock(Layer):
         ])
         self.residual_activation = None
 
-    def call(self, inputs: tf.Tensor, training: bool = None, **kwargs) -> tf.Tensor:
+    def call(self, inputs: tf.Tensor, training: bool = False, **kwargs) -> tf.Tensor:
         x = self.convs(inputs, training=training)
         # residual shortcut
         x += inputs
@@ -174,7 +174,7 @@ class CSPStage(Layer):
 
         self.concat = Concatenate()
 
-    def call(self, inputs: tf.Tensor, training: bool = None, **kwargs) -> tf.Tensor:
+    def call(self, inputs: tf.Tensor, training: bool = False, **kwargs) -> tf.Tensor:
         # down_sampling
         x = self.down_sampling(inputs, training=training)
 
@@ -214,7 +214,7 @@ class UpSampling(Layer):
             UpSampling2D(size=size)
         ])
 
-    def call(self, inputs: tf.Tensor, training: bool = None, **kwargs) -> tf.Tensor:
+    def call(self, inputs: tf.Tensor, training: bool = False, **kwargs) -> tf.Tensor:
         return self.up_sampling(inputs, training=training)
 
 
@@ -223,7 +223,7 @@ class DownSampling(Layer):
         super(DownSampling, self).__init__(name=name, **kwargs)
         self.down_sampling = MyConv2D(filters=filters, kernel_size=3, strides=size)
 
-    def call(self, inputs: tf.Tensor, training: bool = None, **kwargs) -> tf.Tensor:
+    def call(self, inputs: tf.Tensor, training: bool = False, **kwargs) -> tf.Tensor:
         return self.down_sampling(inputs, training=training)
 
 
@@ -233,7 +233,7 @@ class SpatialAttention(Layer):
         self.spatial_conv = MyConv2D(filters=1, kernel_size=7, apply_batchnorm=False, activation=None)
         self.sigmoid = Activation(tf.nn.sigmoid)
 
-    def call(self, inputs, training=False, **kwargs):
+    def call(self, inputs: tf.Tensor, training: bool = False, **kwargs):
         # spatial attention
         y = self.spatial_conv(inputs, training=training)
         y = self.sigmoid(y)

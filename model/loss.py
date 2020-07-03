@@ -14,7 +14,7 @@ class YOLOv4Loss(Loss):
             self,
             num_class: int,
             yolo_score_threshold: float,
-            label_smoothing_factor: float,
+            label_smoothing_factor: float = 0,
             use_focal_loss: bool = False,
             use_focal_obj_loss: bool = False,
             use_giou_loss: bool = False,
