@@ -146,7 +146,7 @@ class Trainer:
     @tf.function
     def validation(self, x: tf.Tensor, y: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
         # calculate loss from validation dataset
-        pred = self.model(x, training=True)
+        pred = self.model(x)
         pred_loss = self.loss_fn(y_pred=pred, y_true=y)
 
         # get bounding box
@@ -215,7 +215,7 @@ class Trainer:
             gradients = self.accumulated_gradients(gradients, step_gradients, self.sub_division)
 
             # apply gradient decent for every sub division
-            if start_step == self.sub_division:
+            if start_step % self.sub_division == 0:
                 gradient_zip = zip(gradients, self.model.trainable_variables)
                 self.optimizer.apply_gradients(gradient_zip)
 

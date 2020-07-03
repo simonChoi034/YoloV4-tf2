@@ -7,6 +7,7 @@ cfg = EasyDict()
 cfg.dataset = "coco/2017"
 cfg.num_of_img = 118287
 cfg.num_class = 80
+cfg.grid_sensitivity_ratio = 1.2
 cfg.yolo_score_threshold = 0.5
 cfg.yolo_iou_threshold = 0.45
 cfg.label_smoothing_factor = 0.1

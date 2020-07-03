@@ -122,8 +122,8 @@ class COCO2017Dataset:
     def transform_bbox(self, bbox: np.ndarray, image: np.ndarray) -> np.ndarray:
         # bbox = [y_min, x_min, y_max, x_max] => [x_min, y_min, x_max, y_max]
         # bbox.shape: (n, 4)
-        bbox[..., 0:2] = bbox[..., 0:2][::-1]
-        bbox[..., 2:4] = bbox[..., 2:4][::-1]
+        bbox[..., 0:2] = bbox[..., 0:2][..., ::-1]
+        bbox[..., 2:4] = bbox[..., 2:4][..., ::-1]
 
         original_image_size = image.shape[0:2]
 

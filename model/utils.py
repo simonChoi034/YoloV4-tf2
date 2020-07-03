@@ -14,7 +14,7 @@ def output_transform(pred: tf.Tensor, anchors: np.ndarray, num_class: int) -> Tu
     box_xy, box_wh, objectness, class_probs = tf.split(
         pred, (2, 2, 1, num_class), axis=-1)
 
-    box_xy = tf.sigmoid(box_xy)
+    box_xy = cfg.grid_sensitivity_ratio * tf.sigmoid(box_xy)
     objectness = tf.sigmoid(objectness)
     class_probs = tf.sigmoid(class_probs)
     raw_pred_box = tf.concat((box_xy, box_wh), axis=-1)  # original xywh for loss

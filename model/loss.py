@@ -73,11 +73,6 @@ class YOLOv4Loss(Loss):
         return iou
 
     @staticmethod
-    def smooth_labels(y_true: tf.Tensor, label_smoothing: Union[tf.Tensor, float]) -> tf.Tensor:
-        label_smoothing = tf.constant(label_smoothing, dtype=tf.float32)
-        return y_true * (1.0 - label_smoothing) + 0.5 * label_smoothing
-
-    @staticmethod
     def giou(box_1: tf.Tensor, box_2: tf.Tensor) -> tf.Tensor:
         # box_1: (batch_size, grid_y, grid_x, N, (x1, y1, x2, y2))
         # box_2: (batch_size, grid_y, grid_x, N, (x1, y1, x2, y2))
@@ -177,9 +172,6 @@ class YOLOv4Loss(Loss):
         true_wh = true_box[..., 2:4]
         # (batch_size, grid, grid, anchors, (x1, y1, x2, y2))
         true_box_coor = tf.concat([true_xy - true_wh * 0.5, true_xy + true_wh * 0.5], axis=-1)
-
-        # label_smoothing
-        true_class = YOLOv4Loss.smooth_labels(true_class, self.label_smoothing_factor)
 
         # give higher weights to small boxes
         box_loss_scale = 2 - true_wh[..., 0] * true_wh[..., 1]
