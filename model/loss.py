@@ -13,7 +13,7 @@ class YOLOv4Loss(Loss):
     def __init__(
             self,
             num_class: int,
-            yolo_score_threshold: float,
+            yolo_iou_threshold: float,
             label_smoothing_factor: float = 0,
             use_focal_loss: bool = False,
             use_focal_obj_loss: bool = False,
@@ -21,7 +21,7 @@ class YOLOv4Loss(Loss):
             use_ciou_loss: bool = False):
         super(YOLOv4Loss, self).__init__()
         self.num_class = num_class
-        self.yolo_score_threshold = yolo_score_threshold
+        self.yolo_iou_threshold = yolo_iou_threshold
         self.label_smoothing_factor = label_smoothing_factor
         self.use_focal_obj_loss = use_focal_obj_loss
         self.use_focal_loss = use_focal_loss
@@ -184,7 +184,7 @@ class YOLOv4Loss(Loss):
                 x[1], tf.cast(x[2], tf.bool))), axis=-1), 0, 0),
             (pred_box_coor, true_box_coor, obj_mask))
 
-        ignore_mask = tf.cast(best_iou < self.yolo_score_threshold, tf.float32)
+        ignore_mask = tf.cast(best_iou < self.yolo_iou_threshold, tf.float32)
 
         # 4. inverting the pred box equations
         grid_size = tf.shape(y_true)[1]

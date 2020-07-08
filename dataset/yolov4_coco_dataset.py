@@ -35,7 +35,8 @@ class COCO2017Dataset:
         bbox = feature["objects"]["bbox"]
         num_of_bbox = tf.shape(bbox)[0]
 
-        bbox = tf.numpy_function(self.transform_bbox, inp=[bbox, image], Tout=tf.float32)
+        original_image_size = tf.shape(image)[0:2]
+        bbox = tf.numpy_function(self.transform_bbox, inp=[bbox, original_image_size], Tout=tf.float32)
 
         label_small, label_medium, label_large = tf.numpy_function(self.map_label_func,
                                                                    inp=[bbox, feature["objects"]["label"]],
@@ -59,8 +60,9 @@ class COCO2017Dataset:
         # bbox = [x_min, y_min, x_max, y_max] => [x_center, y_center, w, h]
         bbox_min = bbox[..., 0:2]
         bbox_max = bbox[..., 2:4]
-        bbox[..., 0:2] = (bbox_min + bbox_max) / 2
-        bbox[..., 2:4] = bbox_max - bbox_min
+        bbox_center = (bbox_min + bbox_max) / 2
+        bbox_wh = bbox_max - bbox_min
+        bbox = np.concatenate([bbox_center, bbox_wh], axis=-1)
 
         # clip value
         bbox = np.clip(bbox, a_min=0.0, a_max=1 - K.epsilon())
@@ -97,7 +99,7 @@ class COCO2017Dataset:
         # bbox.shape = (n, 4)
         # label.shape = (n)
         # anchor_idx.shape = (n)
-        # girds.shape = (grid_size, grid_size, B x (5 + N))
+        # girds.shape = (grid_size, grid_size, B, (5 + N))
         grids = np.zeros((grid_size, grid_size, anchor_mask.shape[0], (5 + self.num_class)), dtype=np.float32)
 
         # put
@@ -120,21 +122,19 @@ class COCO2017Dataset:
 
         return grids
 
-    def transform_bbox(self, bbox: np.ndarray, image: np.ndarray) -> np.ndarray:
+    def transform_bbox(self, bbox: np.ndarray, original_image_size: np.ndarray) -> np.ndarray:
         # bbox = [y_min, x_min, y_max, x_max] => [x_min, y_min, x_max, y_max]
         # bbox.shape: (n, 4)
         bbox[..., 0:2] = bbox[..., 0:2][..., ::-1]
         bbox[..., 2:4] = bbox[..., 2:4][..., ::-1]
 
-        original_image_size = image.shape[0:2]
-
         # rescale bbox to fit new image size
         orig_img_h, orig_img_w = original_image_size[0], original_image_size[1]
         target_img_h, target_img_w = self.image_size, self.image_size
-        ratio_w = min(target_img_w / orig_img_w, target_img_h / orig_img_h)
-        ratio_h = min(target_img_w / orig_img_w, target_img_h / orig_img_h)
+        ratio_w = min(target_img_w / orig_img_w, target_img_h / orig_img_h) * (orig_img_w / target_img_w)
+        ratio_h = min(target_img_w / orig_img_w, target_img_h / orig_img_h) * (orig_img_h / target_img_h)
 
-        multiplier = np.asarray([ratio_w, ratio_h, ratio_w, ratio_h], dtype=np.float32)
+        multiplier = np.array([ratio_w, ratio_h, ratio_w, ratio_h], dtype=np.float32)
 
         bbox = bbox * multiplier
 

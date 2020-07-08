@@ -79,6 +79,7 @@ ACTIVATIONS = {
     "mish": Mish(),
     "leaky_relu": LeakyReLU(),
     "relu": ReLU(),
+    "sigmoid": Activation(tf.nn.sigmoid),
     "linear": Activation("linear", dtype=tf.float32, name="Output-float32-casting")
 }
 
@@ -230,13 +231,11 @@ class DownSampling(Layer):
 class SpatialAttention(Layer):
     def __init__(self, name='spatial-attention', **kwargs):
         super(SpatialAttention, self).__init__(name=name, **kwargs)
-        self.spatial_conv = MyConv2D(filters=1, kernel_size=7, apply_batchnorm=False, activation=None)
-        self.sigmoid = Activation(tf.nn.sigmoid)
+        self.spatial_conv = MyConv2D(filters=1, kernel_size=7, apply_batchnorm=False, activation="sigmoid", apply_dropblock=False)
 
     def call(self, inputs: tf.Tensor, training: bool = False, **kwargs):
         # spatial attention
         y = self.spatial_conv(inputs, training=training)
-        y = self.sigmoid(y)
         y = tf.multiply(inputs, y)
 
         return y

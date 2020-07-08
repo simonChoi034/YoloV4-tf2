@@ -55,11 +55,11 @@ class Trainer:
 
         # define model and loss
         self.model = YOLOv4(num_class=self.num_class)
-        self.optimizer = tf.keras.optimizers.Adam(lr=self.lr_init, clipvalue=0.5)
+        self.optimizer = tf.keras.optimizers.Adam(lr=self.lr_init)
         self.checkpoint_dir = './checkpoints/yolov4_train.tf'
         self.ckpt = tf.train.Checkpoint(step=tf.Variable(1), optimizer=self.optimizer, net=self.model)
         self.manager = tf.train.CheckpointManager(self.ckpt, self.checkpoint_dir, max_to_keep=5)
-        self.loss_fn = YOLOv4Loss(num_class=self.num_class, yolo_score_threshold=self.yolo_score_threshold,
+        self.loss_fn = YOLOv4Loss(num_class=self.num_class, yolo_iou_threshold=self.yolo_iou_threshold,
                                   label_smoothing_factor=self.label_smoothing_factor, use_ciou_loss=True)
 
         # metrics
@@ -109,13 +109,12 @@ class Trainer:
         return np.expand_dims(image, 0)
 
     def accumulated_gradients(self, gradients: Optional[List[tf.Tensor]],
-                              step_gradients: List[Union[tf.Tensor, tf.IndexedSlices]],
-                              num_grad_accumulates: int) -> List[tf.Tensor]:
+                              step_gradients: List[Union[tf.Tensor, tf.IndexedSlices]]) -> List[tf.Tensor]:
         if gradients is None:
-            gradients = [self.flat_gradients(g) / num_grad_accumulates for g in step_gradients]
+            gradients = [self.flat_gradients(g) for g in step_gradients]
         else:
             for i, g in enumerate(step_gradients):
-                gradients[i] += self.flat_gradients(g) / num_grad_accumulates
+                gradients[i] += self.flat_gradients(g)
 
         return gradients
 
@@ -167,41 +166,50 @@ class Trainer:
         return grads
 
     def log_metrics(self, writer: tf.summary.SummaryWriter, dataset: tf.data.Dataset):
-        data = next(iter(dataset))
-        loss, bboxes, scores, class_ids, valid_detections = self.validation(data['image'], data['label'])
+        batch_loss = tf.Variable(0.0, dtype=tf.float32)
+        for _ in range(self.sub_division):
+            data = next(iter(dataset))
+            loss, bboxes, scores, class_ids, valid_detections = self.validation(data['image'], data['label'])
 
-        gt_boxes = data["bbox"]
-        num_of_gt_boxes = data["num_of_bbox"]
+            gt_boxes = data["bbox"]
+            num_of_gt_boxes = data["num_of_bbox"]
 
-        for frame in zip(bboxes.numpy(), class_ids.numpy(), scores.numpy(), valid_detections.numpy(), gt_boxes.numpy(),
-                         num_of_gt_boxes.numpy()):
-            pred_bbox, pred_cls, pred_score, valid_detection, gt_box, num_of_gt_box = frame
+            batch_loss = batch_loss + loss
 
-            # get all predicion and label
-            pred_bbox = pred_bbox[:valid_detection]
-            pred_cls = pred_cls[:valid_detection]
-            pred_score = pred_score[:valid_detection]
-            gt_box = gt_box[:num_of_gt_box]
-            gt_bbox = gt_box[..., :4]
-            gt_class_id = gt_box[..., 4]
+            # calculate mAP
+            for frame in zip(bboxes.numpy(), class_ids.numpy(), scores.numpy(), valid_detections.numpy(), gt_boxes.numpy(),
+                             num_of_gt_boxes.numpy()):
+                pred_bbox, pred_cls, pred_score, valid_detection, gt_box, num_of_gt_box = frame
 
-            #
-            frame = pred_bbox, pred_cls, pred_score, gt_bbox, gt_class_id
-            self.mAP.evaluate(*frame)
+                # get all predicion and label
+                pred_bbox = pred_bbox[:valid_detection]
+                pred_cls = pred_cls[:valid_detection]
+                pred_score = pred_score[:valid_detection]
+                gt_box = gt_box[:num_of_gt_box]
+                gt_bbox = gt_box[..., :4]
+                gt_class_id = gt_box[..., 4]
+
+                #
+                frame = pred_bbox, pred_cls, pred_score, gt_bbox, gt_class_id
+                self.mAP.evaluate(*frame)
 
         mean_average_precision = self.mAP.get_mAP()
         self.mAP.reset_accumulators()
 
         # plot image
-        image = self.plot_bounding_box(data['image'], bboxes, scores, class_ids, valid_detections)
+        pred_image = self.plot_bounding_box(data['image'], bboxes, scores, class_ids, valid_detections)
+        gt_image = self.plot_bounding_box(data['image'], gt_boxes[..., :4], tf.ones_like(scores), gt_boxes[..., 4],
+                                          num_of_gt_boxes)
 
+        # log tensorboard
         with writer.as_default():
             tf.summary.scalar("lr", self.optimizer.lr, step=int(self.ckpt.step))
-            tf.summary.scalar('loss', loss, step=int(self.ckpt.step))
-            tf.summary.scalar('mean loss', loss.numpy() / (self.batch_size / self.sub_division),
+            tf.summary.scalar('loss', batch_loss, step=int(self.ckpt.step))
+            tf.summary.scalar('mean loss', batch_loss.numpy() / self.batch_size,
                               step=int(self.ckpt.step))
             tf.summary.scalar('mAP@0.5', mean_average_precision, step=int(self.ckpt.step))
-            tf.summary.image("Display bounding box", image, step=int(self.ckpt.step))
+            tf.summary.image("Display pred bounding box", pred_image, step=int(self.ckpt.step))
+            tf.summary.image("Display gt bounding box", gt_image, step=int(self.ckpt.step))
 
     def train_one_epoch(self):
         start_step = 0
@@ -212,7 +220,7 @@ class Trainer:
             start_step += 1
 
             # accumulate gradient
-            gradients = self.accumulated_gradients(gradients, step_gradients, self.sub_division)
+            gradients = self.accumulated_gradients(gradients, step_gradients)
 
             # apply gradient decent for every sub division
             if start_step % self.sub_division == 0:
