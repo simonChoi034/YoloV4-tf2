@@ -29,7 +29,7 @@ class YOLOv4Loss(Loss):
         self.use_ciou_loss = use_ciou_loss
         self.anchors = cfg.anchors.get_anchors()
         self.anchor_masks = cfg.anchors.get_anchor_masks()
-        self.binary_crossentropy = BinaryCrossentropy(label_smoothing=self.label_smoothing_factor)
+        self.binary_crossentropy = BinaryCrossentropy(label_smoothing=self.label_smoothing_factor, reduction=tf.keras.losses.Reduction.NONE)
 
     @staticmethod
     def broadcast_iou(box_1, box_2):

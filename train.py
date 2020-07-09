@@ -60,7 +60,7 @@ class Trainer:
         self.ckpt = tf.train.Checkpoint(step=tf.Variable(1), optimizer=self.optimizer, net=self.model)
         self.manager = tf.train.CheckpointManager(self.ckpt, self.checkpoint_dir, max_to_keep=5)
         self.loss_fn = YOLOv4Loss(num_class=self.num_class, yolo_iou_threshold=self.yolo_iou_threshold,
-                                  label_smoothing_factor=self.label_smoothing_factor)
+                                  label_smoothing_factor=self.label_smoothing_factor, use_ciou_loss=True)
 
         # metrics
         self.mAP = DetectionMAP(self.num_class)
