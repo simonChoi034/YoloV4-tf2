@@ -147,8 +147,8 @@ class YOLOv4Loss(Loss):
         return ciou
 
     def focal_loss(self, y_true: tf.Tensor, y_pred: tf.Tensor, gamma: Union[tf.Tensor, float] = 2.0,
-                   alpha: Union[tf.Tensor, float] = 0.25) -> tf.Tensor:
-        sigmoid_loss = binary_crossentropy(y_true, y_pred)
+                   alpha: Union[tf.Tensor, float] = 0.25, label_smoothing: Union[tf.Tensor, float] = 0) -> tf.Tensor:
+        sigmoid_loss = binary_crossentropy(y_true, y_pred, label_smoothing=label_smoothing)
         sigmoid_loss = tf.expand_dims(sigmoid_loss, axis=-1)
 
         p_t = ((y_true * y_pred) + ((1 - y_true) * (1 - y_pred)))
@@ -179,7 +179,6 @@ class YOLOv4Loss(Loss):
         true_box_coor = tf.concat([true_xy - true_wh * 0.5, true_xy + true_wh * 0.5], axis=-1)
 
         # smooth label
-        true_obj = YOLOv4Loss.smooth_labels(true_obj, smoothing_factor=self.label_smoothing_factor, num_class=2)
         true_class = YOLOv4Loss.smooth_labels(true_class, smoothing_factor=self.label_smoothing_factor, num_class=self.num_class)
 
         # give higher weights to small boxes
@@ -206,9 +205,9 @@ class YOLOv4Loss(Loss):
         # 5. calculate all losses
         # confidence loss
         if self.use_focal_obj_loss:
-            confidence_loss = self.focal_loss(true_obj, pred_obj)
+            confidence_loss = self.focal_loss(true_obj, pred_obj, label_smoothing=self.label_smoothing_factor)
         else:
-            confidence_loss = binary_crossentropy(true_obj, pred_obj)
+            confidence_loss = binary_crossentropy(true_obj, pred_obj, label_smoothing=self.label_smoothing_factor)
             confidence_loss = obj_mask * confidence_loss + (1 - obj_mask) * ignore_mask * confidence_loss
 
         # class loss
