@@ -30,8 +30,9 @@ class YOLOv4Loss(Loss):
         self.anchors = cfg.anchors.get_anchors()
         self.anchor_masks = cfg.anchors.get_anchor_masks()
 
-    def smooth_labels(self, y_true: tf.Tensor, label_smoothing: Union[tf.Tensor, float]) -> tf.Tensor:
-        return y_true * (1.0 - label_smoothing) + label_smoothing / self.num_class
+    @staticmethod
+    def smooth_labels(y_true: tf.Tensor, smoothing_factor: Union[tf.Tensor, float], num_class: Union[tf.Tensor, int] = 1) -> tf.Tensor:
+        return y_true * (1.0 - smoothing_factor) + smoothing_factor / num_class
 
     @staticmethod
     def broadcast_iou(box_1, box_2):
@@ -178,7 +179,8 @@ class YOLOv4Loss(Loss):
         true_box_coor = tf.concat([true_xy - true_wh * 0.5, true_xy + true_wh * 0.5], axis=-1)
 
         # smooth label
-        true_class = self.smooth_labels(true_class, self.label_smoothing_factor)
+        true_obj = YOLOv4Loss.smooth_labels(true_obj, smoothing_factor=self.label_smoothing_factor, num_class=2)
+        true_class = YOLOv4Loss.smooth_labels(true_class, smoothing_factor=self.label_smoothing_factor, num_class=self.num_class)
 
         # give higher weights to small boxes
         box_loss_scale = 2 - true_wh[..., 0] * true_wh[..., 1]
