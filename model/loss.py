@@ -205,9 +205,9 @@ class YOLOv4Loss(Loss):
         # 5. calculate all losses
         # confidence loss
         if self.use_focal_obj_loss:
-            confidence_loss = self.focal_loss(true_obj, pred_obj, label_smoothing=self.label_smoothing_factor)
+            confidence_loss = self.focal_loss(true_obj, pred_obj)
         else:
-            confidence_loss = binary_crossentropy(true_obj, pred_obj, label_smoothing=self.label_smoothing_factor)
+            confidence_loss = binary_crossentropy(true_obj, pred_obj)
             confidence_loss = obj_mask * confidence_loss + (1 - obj_mask) * ignore_mask * confidence_loss
 
         # class loss
