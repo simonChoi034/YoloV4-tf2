@@ -20,5 +20,5 @@ cfg.lr_init = 1e-3
 cfg.lr_end = 1e-6
 cfg.warmup_epochs = 5
 cfg.train_epochs = 500
-cfg.step_to_validate = 500
+cfg.step_to_validate = 100
 cfg.anchors = Anchors(cfg.image_size)

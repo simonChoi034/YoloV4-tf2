@@ -3,7 +3,7 @@ from typing import Union
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import backend as K
-from tensorflow.keras.losses import Loss, BinaryCrossentropy
+from tensorflow.keras.losses import Loss, binary_crossentropy
 
 from config import cfg
 from model.utils import output_transform
@@ -29,7 +29,10 @@ class YOLOv4Loss(Loss):
         self.use_ciou_loss = use_ciou_loss
         self.anchors = cfg.anchors.get_anchors()
         self.anchor_masks = cfg.anchors.get_anchor_masks()
-        self.binary_crossentropy = BinaryCrossentropy(label_smoothing=self.label_smoothing_factor, reduction=tf.keras.losses.Reduction.NONE)
+
+    @staticmethod
+    def smooth_labels(y_true: tf.Tensor, label_smoothing: Union[tf.Tensor, float]) -> tf.Tensor:
+        return y_true * (1.0 - label_smoothing) + 0.5 * label_smoothing
 
     @staticmethod
     def broadcast_iou(box_1, box_2):
@@ -145,7 +148,7 @@ class YOLOv4Loss(Loss):
 
     def focal_loss(self, y_true: tf.Tensor, y_pred: tf.Tensor, gamma: Union[tf.Tensor, float] = 2.0,
                    alpha: Union[tf.Tensor, float] = 0.25) -> tf.Tensor:
-        sigmoid_loss = self.binary_crossentropy(y_true, y_pred)
+        sigmoid_loss = binary_crossentropy(y_true, y_pred)
         sigmoid_loss = tf.expand_dims(sigmoid_loss, axis=-1)
 
         p_t = ((y_true * y_pred) + ((1 - y_true) * (1 - y_pred)))
@@ -153,6 +156,8 @@ class YOLOv4Loss(Loss):
         alpha_weight_factor = (y_true * alpha + (1 - y_true) * (1 - alpha))
 
         sigmoid_focal_loss = modulating_factor * alpha_weight_factor * sigmoid_loss
+
+        sigmoid_focal_loss = tf.reduce_sum(sigmoid_focal_loss, axis=-1)
 
         return sigmoid_focal_loss
 
@@ -172,6 +177,9 @@ class YOLOv4Loss(Loss):
         true_wh = true_box[..., 2:4]
         # (batch_size, grid, grid, anchors, (x1, y1, x2, y2))
         true_box_coor = tf.concat([true_xy - true_wh * 0.5, true_xy + true_wh * 0.5], axis=-1)
+
+        # smooth label
+        true_class = YOLOv4Loss.smooth_labels(true_class, self.label_smoothing_factor)
 
         # give higher weights to small boxes
         box_loss_scale = 2 - true_wh[..., 0] * true_wh[..., 1]
@@ -199,14 +207,14 @@ class YOLOv4Loss(Loss):
         if self.use_focal_obj_loss:
             confidence_loss = self.focal_loss(true_obj, pred_obj)
         else:
-            confidence_loss = self.binary_crossentropy(true_obj, pred_obj)
+            confidence_loss = binary_crossentropy(true_obj, pred_obj)
             confidence_loss = obj_mask * confidence_loss + (1 - obj_mask) * ignore_mask * confidence_loss
 
         # class loss
         if self.use_focal_loss:
             class_loss = self.focal_loss(true_class, pred_class)
         else:
-            class_loss = obj_mask * self.binary_crossentropy(true_class, pred_class)
+            class_loss = obj_mask * binary_crossentropy(true_class, pred_class)
 
         # box loss
         if self.use_giou_loss:
