@@ -55,7 +55,7 @@ class Trainer:
 
         # define model and loss
         self.model = YOLOv4(num_class=self.num_class)
-        self.optimizer = tf.keras.optimizers.Adam(lr=self.lr_init)
+        self.optimizer = tf.keras.optimizers.Adam(lr=self.lr_init, clipvalue=0.5)
         self.checkpoint_dir = './checkpoints/yolov4_train.tf'
         self.ckpt = tf.train.Checkpoint(step=tf.Variable(1), optimizer=self.optimizer, net=self.model)
         self.manager = tf.train.CheckpointManager(self.ckpt, self.checkpoint_dir, max_to_keep=5)
@@ -177,7 +177,8 @@ class Trainer:
             batch_loss = batch_loss + loss
 
             # calculate mAP
-            for frame in zip(bboxes.numpy(), class_ids.numpy(), scores.numpy(), valid_detections.numpy(), gt_boxes.numpy(),
+            for frame in zip(bboxes.numpy(), class_ids.numpy(), scores.numpy(), valid_detections.numpy(),
+                             gt_boxes.numpy(),
                              num_of_gt_boxes.numpy()):
                 pred_bbox, pred_cls, pred_score, valid_detection, gt_box, num_of_gt_box = frame
 

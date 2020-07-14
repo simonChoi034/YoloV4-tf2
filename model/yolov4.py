@@ -1,6 +1,5 @@
 from typing import Tuple
 
-from config import cfg
 from model.backbone.CSPDarknet53 import CSPDarknet53
 from model.layer import *
 
@@ -87,18 +86,16 @@ class YOLOv4Head(Layer):
     def __init__(self, num_class: int, name="yolov4_head", **kwargs):
         super(YOLOv4Head, self).__init__(name=name, **kwargs)
         self.num_class = num_class
-        self.anchors = cfg.anchors.get_anchors()
-        self.anchor_masks = cfg.anchors.get_anchor_masks()
 
         #  [small, medium, large] output conv
         self.output_convs = [Sequential([
             MyConv2D(filters=filters, kernel_size=3),
             MyConv2D(
-                filters=len(anchors) * (self.num_class + 5),
+                filters=3 * (self.num_class + 5),
                 kernel_size=1,
                 activation="linear",
                 apply_batchnorm=False)
-        ]) for filters, anchors in zip([1024, 512, 256], self.anchor_masks)]
+        ]) for filters in [1024, 512, 256]]
 
         # concat conv 1
         self.down_sample_1 = DownSampling(filters=256)
@@ -126,11 +123,11 @@ class YOLOv4Head(Layer):
 
         self.concat = Concatenate()
 
-    def yolo_output(self, input: tf.Tensor, conv: Layer, num_anchors: int, training: bool = False) -> tf.Tensor:
+    def yolo_output(self, input: tf.Tensor, conv: Layer, training: bool = False) -> tf.Tensor:
         x = conv(input, training=training)
         x = tf.reshape(
             x,
-            (-1, tf.shape(x)[1], tf.shape(x)[2], num_anchors, self.num_class + 5)
+            (-1, tf.shape(x)[1], tf.shape(x)[2], 3, self.num_class + 5)
         )
         return x
 
@@ -140,8 +137,7 @@ class YOLOv4Head(Layer):
         shortcut_large = output_large
 
         # large_scale output
-        output_large = self.yolo_output(output_large, conv=self.output_convs[2], num_anchors=len(self.anchor_masks[2]),
-                                        training=training)
+        output_large = self.yolo_output(output_large, conv=self.output_convs[2], training=training)
 
         # large to medium scale shortcut connection
         shortcut_large = self.down_sample_1(shortcut_large, training=training)
@@ -149,8 +145,7 @@ class YOLOv4Head(Layer):
 
         # medium scale output
         output_medium = shortcut_medium = self.conv_block_1(output_medium, training=training)
-        output_medium = self.yolo_output(output_medium, conv=self.output_convs[1],
-                                         num_anchors=len(self.anchor_masks[1]), training=training)
+        output_medium = self.yolo_output(output_medium, conv=self.output_convs[1], training=training)
 
         # medium to small scale shortcut connection
         shortcut_medium = self.down_sample_2(shortcut_medium, training=training)
@@ -158,8 +153,7 @@ class YOLOv4Head(Layer):
 
         # small scale output
         output_small = self.conv_block_2(output_small, training=training)
-        output_small = self.yolo_output(output_small, conv=self.output_convs[0],
-                                        num_anchors=len(self.anchor_masks[0]), training=training)
+        output_small = self.yolo_output(output_small, conv=self.output_convs[0], training=training)
 
         return output_small, output_medium, output_large
 

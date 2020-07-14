@@ -6,7 +6,7 @@ from tensorflow.keras import backend as K
 from tensorflow.keras.losses import Loss, binary_crossentropy
 
 from config import cfg
-from model.utils import output_transform
+from model.utils import decode
 
 
 class YOLOv4Loss(Loss):
@@ -31,7 +31,8 @@ class YOLOv4Loss(Loss):
         self.anchor_masks = cfg.anchors.get_anchor_masks()
 
     @staticmethod
-    def smooth_labels(y_true: tf.Tensor, smoothing_factor: Union[tf.Tensor, float], num_class: Union[tf.Tensor, int] = 1) -> tf.Tensor:
+    def smooth_labels(y_true: tf.Tensor, smoothing_factor: Union[tf.Tensor, float],
+                      num_class: Union[tf.Tensor, int] = 1) -> tf.Tensor:
         return y_true * (1.0 - smoothing_factor) + smoothing_factor / num_class
 
     @staticmethod
@@ -141,7 +142,7 @@ class YOLOv4Loss(Loss):
         atan1 = tf.atan(box_1_w / (box_1_h + K.epsilon()))
         atan2 = tf.atan(box_2_w / (box_2_h + K.epsilon()))
         v = 4.0 * tf.square(atan1 - atan2) / (np.pi ** 2)
-        a = v / (1 - iou + v)
+        a = v / (1 - iou + v + K.epsilon())
 
         ciou = iou - 1.0 * p2 / enclose_c2 - 1.0 * a * v
         return ciou
@@ -164,10 +165,8 @@ class YOLOv4Loss(Loss):
     def loss_layer(self, y_pred: tf.Tensor, y_true: tf.Tensor, anchors: np.array) -> tf.Tensor:
         # 1. transform all pred outputs
         # y_pred: (batch_size, grid, grid, anchors, (x, y, w, h, obj, ...class))
-        pred_box_coor, pred_obj, pred_class, pred_xywh = output_transform(
-            y_pred, anchors, self.num_class)
-        pred_xy = pred_xywh[..., 0:2]
-        pred_wh = pred_xywh[..., 2:4]
+        # pred_box_coor: (batch_size, grid, grid, anchors, (x1, y1, x2, y2))
+        pred_box_coor, pred_obj, pred_class = decode(y_pred, anchors)
 
         # 2. transform all true outputs
         # y_true: (batch_size, grid, grid, anchors, (x, y, w, h, obj, ...class))
@@ -176,10 +175,11 @@ class YOLOv4Loss(Loss):
         true_xy = true_box[..., 0:2]
         true_wh = true_box[..., 2:4]
         # (batch_size, grid, grid, anchors, (x1, y1, x2, y2))
-        true_box_coor = tf.concat([true_xy - true_wh * 0.5, true_xy + true_wh * 0.5], axis=-1)
+        true_box_coor = tf.concat([true_xy - true_wh / 2, true_xy + true_wh / 2], axis=-1)
 
         # smooth label
-        true_class = YOLOv4Loss.smooth_labels(true_class, smoothing_factor=self.label_smoothing_factor, num_class=self.num_class)
+        true_class = YOLOv4Loss.smooth_labels(true_class, smoothing_factor=self.label_smoothing_factor,
+                                              num_class=self.num_class)
 
         # give higher weights to small boxes
         box_loss_scale = 2 - true_wh[..., 0] * true_wh[..., 1]
@@ -194,15 +194,7 @@ class YOLOv4Loss(Loss):
 
         ignore_mask = tf.cast(best_iou < self.yolo_iou_threshold, tf.float32)
 
-        # 4. inverting the pred box equations
-        grid_size = tf.shape(y_true)[1]
-        grid = tf.meshgrid(tf.range(grid_size), tf.range(grid_size))
-        grid = tf.expand_dims(tf.stack(grid, axis=-1), axis=2)
-        true_xy = true_xy * tf.cast(grid_size, tf.float32) - tf.cast(grid, tf.float32)
-        true_wh = tf.math.log(true_wh / anchors)
-        true_wh = tf.where(tf.math.is_inf(true_wh), tf.zeros_like(true_wh), true_wh)
-
-        # 5. calculate all losses
+        # 4. calculate all losses
         # confidence loss
         if self.use_focal_obj_loss:
             confidence_loss = self.focal_loss(true_obj, pred_obj)
@@ -223,10 +215,6 @@ class YOLOv4Loss(Loss):
         elif self.use_ciou_loss:
             ciou = self.ciou(pred_box_coor, true_box_coor)
             box_loss = obj_mask * box_loss_scale * (1 - ciou)
-        else:
-            xy_loss = obj_mask * box_loss_scale * tf.reduce_sum(tf.square(true_xy - pred_xy), axis=-1)
-            wh_loss = obj_mask * box_loss_scale * tf.reduce_sum(tf.square(true_wh - pred_wh), axis=-1)
-            box_loss = xy_loss + wh_loss
 
         # sum of all loss
         box_loss = tf.reduce_sum(box_loss, axis=(1, 2, 3))
