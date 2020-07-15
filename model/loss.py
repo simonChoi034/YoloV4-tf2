@@ -144,7 +144,7 @@ class YOLOv4Loss(Loss):
         v = 4.0 * tf.square(atan1 - atan2) / (np.pi ** 2)
         a = v / (1 - iou + v + K.epsilon())
 
-        ciou = iou - 1.0 * p2 / enclose_c2 - 1.0 * a * v
+        ciou = iou - 1.0 * p2 / (enclose_c2 + K.epsilon()) - 1.0 * a * v
         return ciou
 
     def focal_loss(self, y_true: tf.Tensor, y_pred: tf.Tensor, gamma: Union[tf.Tensor, float] = 2.0,
