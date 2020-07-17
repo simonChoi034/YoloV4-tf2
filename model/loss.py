@@ -2,7 +2,6 @@ from typing import Union
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras import backend as K
 from tensorflow.keras.losses import Loss, binary_crossentropy
 
 from config import cfg
@@ -73,7 +72,7 @@ class YOLOv4Loss(Loss):
         box_2_area = (box_2[..., 2] - box_2[..., 0]) * \
                      (box_2[..., 3] - box_2[..., 1])
 
-        iou = int_area / (box_1_area + box_2_area - int_area)
+        iou = tf.math.divide_no_nan(int_area, (box_1_area + box_2_area - int_area))
         return iou
 
     @staticmethod
@@ -90,7 +89,7 @@ class YOLOv4Loss(Loss):
         box_2_area = (box_2[..., 2] - box_2[..., 0]) * \
                      (box_2[..., 3] - box_2[..., 1])
         union_area = box_1_area + box_2_area - int_area
-        iou = int_area / union_area
+        iou = tf.math.divide_no_nan(int_area, union_area)
 
         enclose_left_up = tf.minimum(box_1[..., :2], box_2[..., :2])
         enclose_right_down = tf.maximum(box_1[..., 2:], box_2[..., 2:])
@@ -104,10 +103,6 @@ class YOLOv4Loss(Loss):
     def ciou(box_1: tf.Tensor, box_2: tf.Tensor) -> tf.Tensor:
         # box_1: (batch_size, grid_y, grid_x, N, (x1, y1, x2, y2))
         # box_2: (batch_size, grid_y, grid_x, N, (x1, y1, x2, y2))
-        box_1 = tf.concat([tf.minimum(box_1[..., :2], box_1[..., 2:]),
-                           tf.maximum(box_1[..., :2], box_1[..., 2:])], axis=-1)
-        box_2 = tf.concat([tf.minimum(box_2[..., :2], box_2[..., 2:]),
-                           tf.maximum(box_2[..., :2], box_2[..., 2:])], axis=-1)
 
         # box area
         box_1_w, box_1_h = box_1[..., 2] - box_1[..., 0], box_1[..., 3] - box_1[..., 1]
@@ -122,7 +117,7 @@ class YOLOv4Loss(Loss):
         inter_section = tf.maximum(right_down - left_up, 0.0)
         inter_area = inter_section[..., 0] * inter_section[..., 1]
         union_area = box_1_area + box_2_area - inter_area
-        iou = inter_area / (union_area + K.epsilon())
+        iou = tf.math.divide_no_nan(inter_area, union_area)
 
         # find enclosed area
         enclose_left_up = tf.minimum(box_1[..., :2], box_2[..., :2])
@@ -138,13 +133,14 @@ class YOLOv4Loss(Loss):
 
         p2 = tf.square(box_1_center_x - box_2_center_x) + tf.square(box_1_center_y - box_2_center_y)
 
-        # and epsilon to prevent nan
-        atan1 = tf.atan(box_1_w / (box_1_h + K.epsilon()))
-        atan2 = tf.atan(box_2_w / (box_2_h + K.epsilon()))
-        v = 4.0 * tf.square(atan1 - atan2) / (np.pi ** 2)
-        a = v / (1 - iou + v + K.epsilon())
+        diou = iou - tf.math.divide_no_nan(p2, enclose_c2)
 
-        ciou = iou - 1.0 * p2 / (enclose_c2 + K.epsilon()) - 1.0 * a * v
+        v = ((tf.atan(tf.math.divide_no_nan(box_1_w, box_1_h)) - tf.atan(
+            tf.math.divide_no_nan(box_2_w, box_2_h))) * 2 / np.pi) ** 2
+        alpha = tf.math.divide_no_nan(v, 1 - iou + v)
+
+        ciou = diou - alpha * v
+
         return ciou
 
     def focal_loss(self, y_true: tf.Tensor, y_pred: tf.Tensor, gamma: Union[tf.Tensor, float] = 2.0,
