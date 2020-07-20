@@ -95,7 +95,7 @@ class YOLOv4Loss(Loss):
         enclose_right_down = tf.maximum(box_1[..., 2:], box_2[..., 2:])
         enclose = tf.maximum(enclose_right_down - enclose_left_up, 0.0)
         enclose_area = enclose[..., 0] * enclose[..., 1]
-        giou = iou - 1.0 * (enclose_area - union_area) / enclose_area
+        giou = iou - 1.0 * tf.math.divide_no_nan((enclose_area - union_area), enclose_area)
 
         return giou
 

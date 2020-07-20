@@ -118,12 +118,13 @@ class COCO2017Dataset:
 
                 box_index = np.where(anchor_mask == anchor_id)[0][0]
 
-                grid_array = np.asarray([box[0], box[1], box[2], box[3], 1])
-                class_array = np.zeros(self.num_class)
-                class_array[int(class_id)] = 1
+                grid_array = np.zeros((5 + self.num_class))
+                grid_array[0:5] = np.array([box[0], box[1], box[2], box[3], 1])
+                class_index = int(5 + class_id)
+                grid_array[class_index] = 1
 
                 # grid[y][x][anchor] = [tx, ty, bw, bh, obj, ...class_id]
-                grids[grid_xy[1]][grid_xy[0]][box_index] = np.append(grid_array, class_array)
+                grids[grid_xy[1]][grid_xy[0]][box_index] = grid_array
 
         return grids
 

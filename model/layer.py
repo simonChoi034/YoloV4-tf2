@@ -1,9 +1,8 @@
-from typing import Union, List
+from typing import Union, List, Any
 
 import tensorflow as tf
 from tensorflow.keras import Sequential
 from tensorflow.keras import backend as K
-from tensorflow.keras.activations import tanh, softplus
 from tensorflow.keras.layers import Layer, Conv2D, LeakyReLU, BatchNormalization, Concatenate, MaxPool2D, UpSampling2D, \
     Activation, ReLU
 from tensorflow.keras.regularizers import l2
@@ -68,20 +67,24 @@ class DropBlock(Layer):
 
 
 class Mish(Layer):
-    def __init__(self):
-        super(Mish, self).__init__()
+    def __init__(self, **kwargs):
+        super(Mish, self).__init__(**kwargs)
 
     def call(self, inputs: tf.Tensor, **kwargs) -> tf.Tensor:
-        return inputs * tanh(softplus(inputs))
+        return inputs * tf.math.tanh(tf.math.softplus(inputs))
 
 
-ACTIVATIONS = {
-    "mish": Mish(),
-    "leaky_relu": LeakyReLU(),
-    "relu": ReLU(),
-    "sigmoid": Activation(tf.nn.sigmoid),
-    "linear": Activation("linear", dtype=tf.float32, name="Output-float32-casting")
-}
+def create_activation_layer(name: str) -> Union[Mish, LeakyReLU, ReLU, Activation]:
+    if name == "mish":
+        return Mish()
+    elif name == "leaky_relu":
+        return LeakyReLU(alpha=0.1)
+    elif name == "relu":
+        return ReLU()
+    elif name == "sigmoid":
+        return Activation(tf.nn.sigmoid)
+    else:
+        return Activation("linear", dtype=tf.float32, name="Output-float32-casting")
 
 
 class MyConv2D(Layer):
@@ -109,7 +112,8 @@ class MyConv2D(Layer):
             kernel_initializer=tf.random_normal_initializer(0., 0.05),
             kernel_regularizer=l2()
         )
-        self.activation = activation
+        self.activation = create_activation_layer(activation)
+        self.apply_activation = activation is not None
         self.apply_batchnorm = apply_batchnorm
         self.apply_dropblock = apply_dropblock
         self.batch_norm = BatchNormalization()
@@ -120,8 +124,8 @@ class MyConv2D(Layer):
         if self.apply_batchnorm:
             x = self.batch_norm(x, training=training)
 
-        if self.activation is not None:
-            x = ACTIVATIONS[self.activation](x)
+        if self.apply_activation:
+            x = self.activation(x)
 
         if self.apply_dropblock:
             x = self.drop_block(x, training=training)
@@ -137,16 +141,11 @@ class CSPBlock(Layer):
             MyConv2D(filters=self.filters[0], kernel_size=1, activation="mish", apply_dropblock=True),
             MyConv2D(filters=self.filters[1], kernel_size=3, activation="mish", apply_dropblock=True)
         ])
-        self.residual_activation = None
 
     def call(self, inputs: tf.Tensor, training: bool = False, **kwargs) -> tf.Tensor:
         x = self.convs(inputs, training=training)
         # residual shortcut
         x += inputs
-
-        # activation
-        if self.residual_activation:
-            x = ACTIVATIONS[self.residual_activation](x)
 
         return x
 
@@ -211,8 +210,8 @@ class UpSampling(Layer):
     def __init__(self, filters: Union[List, int], size: int = 2, name="up_sampling", **kwargs):
         super(UpSampling, self).__init__(name=name, **kwargs)
         self.up_sampling = Sequential([
-            MyConv2D(filters=filters, kernel_size=1),
-            UpSampling2D(size=size)
+            UpSampling2D(size=size),
+            MyConv2D(filters=filters, kernel_size=1)
         ])
 
     def call(self, inputs: tf.Tensor, training: bool = False, **kwargs) -> tf.Tensor:
@@ -231,7 +230,8 @@ class DownSampling(Layer):
 class SpatialAttention(Layer):
     def __init__(self, name='spatial-attention', **kwargs):
         super(SpatialAttention, self).__init__(name=name, **kwargs)
-        self.spatial_conv = MyConv2D(filters=1, kernel_size=7, apply_batchnorm=False, activation="sigmoid", apply_dropblock=False)
+        self.spatial_conv = MyConv2D(filters=1, kernel_size=7, apply_batchnorm=False, activation="sigmoid",
+                                     apply_dropblock=False)
 
     def call(self, inputs: tf.Tensor, training: bool = False, **kwargs):
         # spatial attention
