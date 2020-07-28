@@ -55,7 +55,7 @@ class Trainer:
 
         # define model and loss
         self.model = YOLOv4(num_class=self.num_class)
-        self.optimizer = tf.keras.optimizers.Adam(lr=self.lr_init, clipvalue=0.5)
+        self.optimizer = tf.keras.optimizers.Adam(learning_rate=self.lr_init)
         self.checkpoint_dir = './checkpoints/yolov4_train.tf'
         self.ckpt = tf.train.Checkpoint(step=tf.Variable(1), optimizer=self.optimizer, net=self.model)
         self.manager = tf.train.CheckpointManager(self.ckpt, self.checkpoint_dir, max_to_keep=5)
@@ -159,9 +159,7 @@ class Trainer:
             pred = self.model(x, training=True)
             pred_loss = self.loss_fn(y_pred=pred, y_true=y)
 
-            total_loss = pred_loss + tf.reduce_sum(self.model.losses)
-
-        grads = tape.gradient(total_loss, self.model.trainable_variables)
+        grads = tape.gradient(pred_loss, self.model.trainable_variables)
 
         return grads
 

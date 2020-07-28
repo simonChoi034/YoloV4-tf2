@@ -1,11 +1,10 @@
-from typing import Union
+from typing import Union, Tuple
 
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.losses import Loss, binary_crossentropy
 
 from config import cfg
-from model.utils import decode
 
 
 class YOLOv4Loss(Loss):
@@ -28,6 +27,29 @@ class YOLOv4Loss(Loss):
         self.use_ciou_loss = use_ciou_loss
         self.anchors = cfg.anchors.get_anchors()
         self.anchor_masks = cfg.anchors.get_anchor_masks()
+
+    @staticmethod
+    def decode_loss(pred: tf.Tensor, anchors: np.ndarray) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
+        # pred: (batch_size, grid, grid, anchors, (x, y, w, h, obj, ...classes))
+        grid_size = tf.shape(pred)[1]
+        box_xy, box_wh, objectness, class_probs = tf.split(pred, (2, 2, 1, -1), axis=-1)
+
+        box_xy = cfg.grid_sensitivity_ratio * tf.sigmoid(box_xy)
+        objectness = tf.sigmoid(objectness)
+        class_probs = tf.sigmoid(class_probs)
+        raw_box = tf.concat([box_xy, box_wh], axis=-1)
+
+        grid = tf.meshgrid(tf.range(grid_size), tf.range(grid_size))
+        grid = tf.expand_dims(tf.stack(grid, axis=-1), axis=2)
+
+        box_xy = (box_xy + tf.cast(grid, tf.float32)) / tf.cast(grid_size, tf.float32)
+        box_wh = tf.exp(box_wh) * anchors
+
+        box_x1y1 = box_xy - box_wh / 2
+        box_x2y2 = box_xy + box_wh / 2
+        bbox = tf.concat([box_x1y1, box_x2y2], axis=-1)
+
+        return bbox, objectness, class_probs, raw_box
 
     @staticmethod
     def smooth_labels(y_true: tf.Tensor, smoothing_factor: Union[tf.Tensor, float],
@@ -56,7 +78,9 @@ class YOLOv4Loss(Loss):
                      (box_1[..., 3] - box_1[..., 1])
         box_2_area = (box_2[..., 2] - box_2[..., 0]) * \
                      (box_2[..., 3] - box_2[..., 1])
-        return int_area / (box_1_area + box_2_area - int_area)
+
+        iou = tf.math.divide_no_nan(int_area, (box_1_area + box_2_area - int_area))
+        return iou
 
     @staticmethod
     def iou(box_1: tf.Tensor, box_2: tf.Tensor) -> tf.Tensor:
@@ -135,9 +159,10 @@ class YOLOv4Loss(Loss):
 
         diou = iou - tf.math.divide_no_nan(p2, enclose_c2)
 
-        v = ((tf.atan(tf.math.divide_no_nan(box_1_w, box_1_h)) - tf.atan(
-            tf.math.divide_no_nan(box_2_w, box_2_h))) * 2 / np.pi) ** 2
-        alpha = tf.math.divide_no_nan(v, 1 - iou + v)
+        atan = tf.stop_gradient((tf.atan(tf.math.divide_no_nan(box_1_w, box_1_h)) - tf.atan(
+            tf.math.divide_no_nan(box_2_w, box_2_h))))
+        v = tf.stop_gradient((atan * 2 / np.pi) ** 2)
+        alpha = tf.stop_gradient(tf.math.divide_no_nan(v, 1 - iou + v))
 
         ciou = diou - alpha * v
 
@@ -162,7 +187,7 @@ class YOLOv4Loss(Loss):
         # 1. transform all pred outputs
         # y_pred: (batch_size, grid, grid, anchors, (x, y, w, h, obj, ...class))
         # pred_box_coor: (batch_size, grid, grid, anchors, (x1, y1, x2, y2))
-        pred_box_coor, pred_obj, pred_class = decode(y_pred, anchors)
+        pred_box_coor, pred_obj, pred_class, pred_raw_box = YOLOv4Loss.decode_loss(y_pred, anchors)
 
         # 2. transform all true outputs
         # y_true: (batch_size, grid, grid, anchors, (x, y, w, h, obj, ...class))
@@ -171,7 +196,7 @@ class YOLOv4Loss(Loss):
         true_xy = true_box[..., 0:2]
         true_wh = true_box[..., 2:4]
         # (batch_size, grid, grid, anchors, (x1, y1, x2, y2))
-        true_box_coor = tf.concat([true_xy - true_wh / 2, true_xy + true_wh / 2], axis=-1)
+        true_box_coor = tf.concat([true_xy - true_wh / 2.0, true_xy + true_wh / 2.0], axis=-1)
 
         # smooth label
         true_class = YOLOv4Loss.smooth_labels(true_class, smoothing_factor=self.label_smoothing_factor,
@@ -211,6 +236,28 @@ class YOLOv4Loss(Loss):
         elif self.use_ciou_loss:
             ciou = self.ciou(pred_box_coor, true_box_coor)
             box_loss = obj_mask * box_loss_scale * (1 - ciou)
+        else:
+            # traditional loss for xy and wh
+            pred_xy = pred_raw_box[..., 0:2]
+            pred_wh = pred_raw_box[..., 2:4]
+
+            # invert box equation
+            grid_size = tf.shape(y_true)[1]
+            grid = tf.meshgrid(tf.range(grid_size), tf.range(grid_size))
+            grid = tf.expand_dims(tf.stack(grid, axis=-1), axis=2)
+            true_xy = true_xy * tf.cast(grid_size, tf.float32) - \
+                      tf.cast(grid, tf.float32)
+            true_wh = tf.math.log(true_wh / anchors)
+            true_wh = tf.where(tf.math.is_inf(true_wh),
+                               tf.zeros_like(true_wh), true_wh)
+
+            # sum squared box loss
+            xy_loss = obj_mask * box_loss_scale * \
+                      tf.reduce_sum(tf.square(true_xy - pred_xy), axis=-1)
+            wh_loss = obj_mask * box_loss_scale * \
+                      tf.reduce_sum(tf.square(true_wh - pred_wh), axis=-1)
+
+            box_loss = xy_loss + wh_loss
 
         # sum of all loss
         box_loss = tf.reduce_sum(box_loss, axis=(1, 2, 3))

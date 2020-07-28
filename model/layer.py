@@ -1,11 +1,11 @@
-from typing import Union, List, Any
+from typing import Union, List
 
 import tensorflow as tf
 from tensorflow.keras import Sequential
 from tensorflow.keras import backend as K
-from tensorflow.keras.layers import Layer, Conv2D, LeakyReLU, BatchNormalization, Concatenate, MaxPool2D, UpSampling2D, \
+from tensorflow.keras.layers import Layer, Conv2D, LeakyReLU, Concatenate, MaxPool2D, UpSampling2D, \
     Activation, ReLU
-from tensorflow.keras.regularizers import l2
+from tensorflow_addons.layers.normalizations import GroupNormalization
 
 
 class DropBlock(Layer):
@@ -109,14 +109,14 @@ class MyConv2D(Layer):
             strides,
             dilation_rate=dilation_rate,
             padding=padding,
-            kernel_initializer=tf.random_normal_initializer(0., 0.05),
-            kernel_regularizer=l2()
+            kernel_initializer=tf.initializers.GlorotNormal(),
+            use_bias=False
         )
         self.activation = create_activation_layer(activation)
         self.apply_activation = activation is not None
         self.apply_batchnorm = apply_batchnorm
         self.apply_dropblock = apply_dropblock
-        self.batch_norm = BatchNormalization()
+        self.batch_norm = GroupNormalization(groups=32)
         self.drop_block = DropBlock(keep_prob=keep_prob, block_size=dropblock_size)
 
     def call(self, inputs: tf.Tensor, training: bool = False, **kwargs) -> tf.Tensor:
@@ -207,11 +207,12 @@ class SpatialPyramidPooling(Layer):
 
 
 class UpSampling(Layer):
-    def __init__(self, filters: Union[List, int], size: int = 2, name="up_sampling", **kwargs):
+    def __init__(self, filters: Union[List, int], size: int = 2, apply_dropblock: bool = False, name="up_sampling",
+                 **kwargs):
         super(UpSampling, self).__init__(name=name, **kwargs)
         self.up_sampling = Sequential([
             UpSampling2D(size=size),
-            MyConv2D(filters=filters, kernel_size=1)
+            MyConv2D(filters=filters, kernel_size=1, apply_dropblock=apply_dropblock)
         ])
 
     def call(self, inputs: tf.Tensor, training: bool = False, **kwargs) -> tf.Tensor:
@@ -219,9 +220,10 @@ class UpSampling(Layer):
 
 
 class DownSampling(Layer):
-    def __init__(self, filters: Union[List, int], size: int = 2, name="down_sampling", **kwargs):
+    def __init__(self, filters: Union[List, int], size: int = 2, apply_dropblock: bool = False, name="down_sampling",
+                 **kwargs):
         super(DownSampling, self).__init__(name=name, **kwargs)
-        self.down_sampling = MyConv2D(filters=filters, kernel_size=3, strides=size)
+        self.down_sampling = MyConv2D(filters=filters, kernel_size=3, strides=size, apply_dropblock=apply_dropblock)
 
     def call(self, inputs: tf.Tensor, training: bool = False, **kwargs) -> tf.Tensor:
         return self.down_sampling(inputs, training=training)
@@ -230,8 +232,8 @@ class DownSampling(Layer):
 class SpatialAttention(Layer):
     def __init__(self, name='spatial-attention', **kwargs):
         super(SpatialAttention, self).__init__(name=name, **kwargs)
-        self.spatial_conv = MyConv2D(filters=1, kernel_size=7, apply_batchnorm=False, activation="sigmoid",
-                                     apply_dropblock=False)
+        self.spatial_conv = MyConv2D(filters=1, kernel_size=7, activation="sigmoid", apply_dropblock=False,
+                                     apply_batchnorm=False)
 
     def call(self, inputs: tf.Tensor, training: bool = False, **kwargs):
         # spatial attention
