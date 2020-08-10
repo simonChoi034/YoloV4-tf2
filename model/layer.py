@@ -67,8 +67,8 @@ class DropBlock(Layer):
 
 
 class Mish(Layer):
-    def __init__(self, **kwargs):
-        super(Mish, self).__init__(**kwargs)
+    def __init__(self, name="mish", **kwargs):
+        super(Mish, self).__init__(name=name, **kwargs)
 
     def call(self, inputs: tf.Tensor, **kwargs) -> tf.Tensor:
         return inputs * tf.math.tanh(tf.math.softplus(inputs))
@@ -138,8 +138,8 @@ class CSPBlock(Layer):
         super(CSPBlock, self).__init__(name=name, **kwargs)
         self.filters = [filters, filters] if isinstance(filters, int) else filters
         self.convs = Sequential([
-            MyConv2D(filters=self.filters[0], kernel_size=1, activation="mish", apply_dropblock=True),
-            MyConv2D(filters=self.filters[1], kernel_size=3, activation="mish", apply_dropblock=True)
+            MyConv2D(filters=self.filters[0], kernel_size=1, activation="mish", apply_dropblock=True, name="csp_conv1"),
+            MyConv2D(filters=self.filters[1], kernel_size=3, activation="mish", apply_dropblock=True, name="csp_conv2")
         ])
 
     def call(self, inputs: tf.Tensor, training: bool = False, **kwargs) -> tf.Tensor:
@@ -165,7 +165,7 @@ class CSPStage(Layer):
 
         # residual conv block
         self.conv_blocks = Sequential(
-            [CSPBlock(filters=self.filters[0]) for _ in range(num_blocks)]
+            [CSPBlock(filters=self.filters[0], name="csp_block_{}".format(i + 1)) for i in range(num_blocks)]
         )
         self.conv1x1 = MyConv2D(filters=self.filters[0], kernel_size=1, activation="mish", apply_dropblock=True)
 

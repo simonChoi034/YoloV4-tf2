@@ -159,9 +159,8 @@ class YOLOv4Loss(Loss):
 
         diou = iou - tf.math.divide_no_nan(p2, enclose_c2)
 
-        atan = tf.stop_gradient((tf.atan(tf.math.divide_no_nan(box_1_w, box_1_h)) - tf.atan(
-            tf.math.divide_no_nan(box_2_w, box_2_h))))
-        v = tf.stop_gradient((atan * 2 / np.pi) ** 2)
+        atan = tf.atan(tf.math.divide_no_nan(box_1_w, box_1_h)) - tf.atan(tf.math.divide_no_nan(box_2_w, box_2_h))
+        v = (atan * 2 / np.pi) ** 2
         alpha = tf.stop_gradient(tf.math.divide_no_nan(v, 1 - iou + v))
 
         ciou = diou - alpha * v

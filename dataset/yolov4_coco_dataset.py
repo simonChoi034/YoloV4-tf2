@@ -90,10 +90,10 @@ class COCO2017Dataset:
     def map_image_func(self, image: np.ndarray) -> tf.Tensor:
         img = tf.image.resize(image, (self.image_size, self.image_size), preserve_aspect_ratio=True)
         img = tf.image.pad_to_bounding_box(img, 0, 0, self.image_size, self.image_size)
-        img = tf.image.random_brightness(img, max_delta=0.5)
-        img = tf.image.random_contrast(img, lower=0.2, upper=0.5)
+        img = tf.image.random_brightness(img, max_delta=0.25)
+        img = tf.image.random_contrast(img, lower=0.4, upper=1.3)
         img = tf.image.random_hue(img, max_delta=0.2)
-        img = tf.image.random_saturation(img, lower=0.6, upper=1.6)
+        img = tf.image.random_saturation(img, lower=0, upper=4)
 
         img = img / 127.5 - 1  # normalize to [-1, 1]
 

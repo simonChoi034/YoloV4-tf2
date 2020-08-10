@@ -14,38 +14,38 @@ class PANet(Layer):
         self.concat = Concatenate()
 
         self.block_1 = Sequential([
-            MyConv2D(filters=512, kernel_size=1, apply_dropblock=True),
-            MyConv2D(filters=1024, kernel_size=3, apply_dropblock=True),
-            MyConv2D(filters=512, kernel_size=1, apply_dropblock=True)
+            MyConv2D(filters=512, kernel_size=1, apply_dropblock=True, name="pa_net_block1_conv1"),
+            MyConv2D(filters=1024, kernel_size=3, apply_dropblock=True, name="pa_net_block1_conv2"),
+            MyConv2D(filters=512, kernel_size=1, apply_dropblock=True, name="pa_net_block1_conv3")
         ])
         self.ssp = SpatialPyramidPooling()
 
         self.block_2 = Sequential([
-            MyConv2D(filters=512, kernel_size=1, apply_dropblock=True),
-            MyConv2D(filters=512, kernel_size=3, apply_dropblock=True),
-            MyConv2D(filters=512, kernel_size=1, apply_dropblock=True)
+            MyConv2D(filters=512, kernel_size=1, apply_dropblock=True, name="pa_net_block2_conv1"),
+            MyConv2D(filters=512, kernel_size=3, apply_dropblock=True, name="pa_net_block2_conv2"),
+            MyConv2D(filters=512, kernel_size=1, apply_dropblock=True, name="pa_net_block2_conv3")
         ])
 
         self.up_sampling_1 = UpSampling(filters=256, apply_dropblock=True)
         self.medium_entry_conv = MyConv2D(filters=256, kernel_size=1, apply_dropblock=True)
 
         self.block_3 = Sequential([
-            MyConv2D(filters=256, kernel_size=1, apply_dropblock=True),
-            MyConv2D(filters=512, kernel_size=3, apply_dropblock=True),
-            MyConv2D(filters=256, kernel_size=1, apply_dropblock=True),
-            MyConv2D(filters=512, kernel_size=3, apply_dropblock=True),
-            MyConv2D(filters=256, kernel_size=1, apply_dropblock=True)
+            MyConv2D(filters=256, kernel_size=1, apply_dropblock=True, name="pa_net_block3_conv1"),
+            MyConv2D(filters=512, kernel_size=3, apply_dropblock=True, name="pa_net_block3_conv2"),
+            MyConv2D(filters=256, kernel_size=1, apply_dropblock=True, name="pa_net_block3_conv3"),
+            MyConv2D(filters=512, kernel_size=3, apply_dropblock=True, name="pa_net_block3_conv4"),
+            MyConv2D(filters=256, kernel_size=1, apply_dropblock=True, name="pa_net_block3_conv5")
         ])
 
         self.up_sampling_2 = UpSampling(filters=128, apply_dropblock=True)
         self.large_entry_conv = MyConv2D(filters=128, kernel_size=1, apply_dropblock=True)
 
         self.block_4 = Sequential([
-            MyConv2D(filters=128, kernel_size=1, apply_dropblock=True),
-            MyConv2D(filters=256, kernel_size=3, apply_dropblock=True),
-            MyConv2D(filters=128, kernel_size=1, apply_dropblock=True),
-            MyConv2D(filters=256, kernel_size=3, apply_dropblock=True),
-            MyConv2D(filters=128, kernel_size=1, apply_dropblock=True)
+            MyConv2D(filters=128, kernel_size=1, apply_dropblock=True, name="pa_net_block4_conv1"),
+            MyConv2D(filters=256, kernel_size=3, apply_dropblock=True, name="pa_net_block4_conv2"),
+            MyConv2D(filters=128, kernel_size=1, apply_dropblock=True, name="pa_net_block4_conv3"),
+            MyConv2D(filters=256, kernel_size=3, apply_dropblock=True, name="pa_net_block4_conv4"),
+            MyConv2D(filters=128, kernel_size=1, apply_dropblock=True, name="pa_net_block4_conv5")
         ])
 
         self.attentions = [SpatialAttention() for _ in range(3)]
@@ -95,7 +95,9 @@ class YOLOv4Head(Layer):
                 kernel_size=1,
                 activation="linear",
                 apply_batchnorm=False,
-                apply_dropblock=False)
+                apply_dropblock=False,
+                name="output_conv"
+            )
         ]) for filters in [1024, 512, 256]]
 
         # concat conv 1
@@ -103,11 +105,11 @@ class YOLOv4Head(Layer):
 
         # block 1
         self.conv_block_1 = Sequential([
-            MyConv2D(filters=256, kernel_size=1, apply_dropblock=True),
-            MyConv2D(filters=512, kernel_size=3, apply_dropblock=True),
-            MyConv2D(filters=256, kernel_size=1, apply_dropblock=True),
-            MyConv2D(filters=512, kernel_size=3, apply_dropblock=True),
-            MyConv2D(filters=256, kernel_size=1, apply_dropblock=True)
+            MyConv2D(filters=256, kernel_size=1, apply_dropblock=True, name="head_block_1_conv1"),
+            MyConv2D(filters=512, kernel_size=3, apply_dropblock=True, name="head_block_1_conv2"),
+            MyConv2D(filters=256, kernel_size=1, apply_dropblock=True, name="head_block_1_conv3"),
+            MyConv2D(filters=512, kernel_size=3, apply_dropblock=True, name="head_block_1_conv4"),
+            MyConv2D(filters=256, kernel_size=1, apply_dropblock=True, name="head_block_1_conv5")
         ])
 
         # concat conv 2
@@ -115,11 +117,11 @@ class YOLOv4Head(Layer):
 
         # block 2
         self.conv_block_2 = Sequential([
-            MyConv2D(filters=512, kernel_size=1, apply_dropblock=True),
-            MyConv2D(filters=1024, kernel_size=3, apply_dropblock=True),
-            MyConv2D(filters=512, kernel_size=1, apply_dropblock=True),
-            MyConv2D(filters=1024, kernel_size=3, apply_dropblock=True),
-            MyConv2D(filters=512, kernel_size=1, apply_dropblock=True)
+            MyConv2D(filters=512, kernel_size=1, apply_dropblock=True, name="head_block_2_conv1"),
+            MyConv2D(filters=1024, kernel_size=3, apply_dropblock=True, name="head_block_2_conv2"),
+            MyConv2D(filters=512, kernel_size=1, apply_dropblock=True, name="head_block_2_conv3"),
+            MyConv2D(filters=1024, kernel_size=3, apply_dropblock=True, name="head_block_2_conv4"),
+            MyConv2D(filters=512, kernel_size=1, apply_dropblock=True, name="head_block_2_conv5")
         ])
 
         self.concat = Concatenate()

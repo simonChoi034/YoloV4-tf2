@@ -45,7 +45,7 @@ class Trainer:
         self.yolo_iou_threshold = cfg.yolo_iou_threshold
         self.yolo_score_threshold = cfg.yolo_score_threshold
         self.label_smoothing_factor = cfg.label_smoothing_factor
-        self.lr_init = cfg.lr_init
+        self.lr_init = cfg.lr_init / self.batch_size
         self.lr_end = cfg.lr_end
         self.warmup_epochs = cfg.warmup_epochs
         self.train_epochs = cfg.train_epochs
