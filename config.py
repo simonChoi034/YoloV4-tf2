@@ -19,5 +19,5 @@ cfg.lr_init = 1e-3
 cfg.lr_end = 1e-6
 cfg.warmup_epochs = 2
 cfg.train_epochs = 300
-cfg.step_to_log = 1
+cfg.step_to_log = 250
 cfg.anchors = Anchors(cfg.image_size)

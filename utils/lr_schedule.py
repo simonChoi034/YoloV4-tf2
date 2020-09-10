@@ -1,5 +1,6 @@
 import math
 
+import tensorflow as tf
 from tensorflow.keras.optimizers.schedules import LearningRateSchedule
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -36,21 +37,22 @@ class WarmUpLinearCosineDecay(LearningRateSchedule):
         self.beta = beta
         self.name = "WarmUpLinearCosineDecay"
 
+    @tf.function
     def __call__(self, step):
         with ops.name_scope_v2(self.name or "LinearCosineDecay") as name:
             initial_learning_rate = ops.convert_to_tensor_v2(
                 self.initial_learning_rate, name="initial_learning_rate")
             dtype = initial_learning_rate.dtype
+            warmup_steps = math_ops.cast(self.warmup_steps, dtype)
 
             # warmup
-            if step < self.warmup_steps:
+            if step < warmup_steps:
                 step = math_ops.cast(step, dtype)
-                warmup_steps = math_ops.cast(self.warmup_steps, dtype)
                 warmup = step / warmup_steps
                 return math_ops.multiply(initial_learning_rate, warmup, name=name)
             else:
-                step = math_ops.cast(step - self.warmup_steps, dtype)
-                decay_steps = math_ops.cast(self.self.decay_steps - self.warmup_steps, dtype)
+                step = math_ops.cast(step, dtype) - warmup_steps
+                decay_steps = math_ops.cast(self.decay_steps, dtype) - warmup_steps
                 num_periods = math_ops.cast(self.num_periods, dtype)
                 alpha = math_ops.cast(self.alpha, dtype)
                 beta = math_ops.cast(self.beta, dtype)
