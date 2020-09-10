@@ -185,6 +185,7 @@ class Trainer:
     def train_one_epoch(self):
         for data in self.dataset_train:
             loss = self.train_one_step(data['image'], data['label'])
+            self.ckpt.step.assign_add(1)
 
             # validation every i steps
             if int(self.ckpt.step) % self.step_to_log == 0:
