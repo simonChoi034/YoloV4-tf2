@@ -16,7 +16,7 @@ class COCO2017Dataset:
             num_class: int = cfg.num_class,
             mode: Any = tfds.Split.TRAIN,
             image_size: int = cfg.image_size,
-            batch_size: int = cfg.batch_size // cfg.sub_division,
+            batch_size: int = cfg.batch_size,
             buffer_size: int = cfg.buffer_size,
             prefetch_size: int = cfg.prefetch_size):
         self.dataset = tfds.load(name=dataset, split=mode)
@@ -92,7 +92,7 @@ class COCO2017Dataset:
         img = tf.image.pad_to_bounding_box(img, 0, 0, self.image_size, self.image_size)
         img = tf.image.random_brightness(img, max_delta=0.25)
         img = tf.image.random_contrast(img, lower=0.4, upper=1.3)
-        img = tf.image.random_hue(img, max_delta=0.2)
+        #img = tf.image.random_hue(img, max_delta=0.2)
         img = tf.image.random_saturation(img, lower=0, upper=4)
 
         img = img / 127.5 - 1  # normalize to [-1, 1]

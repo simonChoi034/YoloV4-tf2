@@ -22,7 +22,7 @@ class PANet(Layer):
 
         self.block_2 = Sequential([
             MyConv2D(filters=512, kernel_size=1, apply_dropblock=True, name="pa_net_block2_conv1"),
-            MyConv2D(filters=512, kernel_size=3, apply_dropblock=True, name="pa_net_block2_conv2"),
+            MyConv2D(filters=1024, kernel_size=3, apply_dropblock=True, name="pa_net_block2_conv2"),
             MyConv2D(filters=512, kernel_size=1, apply_dropblock=True, name="pa_net_block2_conv3")
         ])
 

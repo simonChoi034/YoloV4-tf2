@@ -232,9 +232,11 @@ class YOLOv4Loss(Loss):
         if self.use_giou_loss:
             giou = self.giou(pred_box_coor, true_box_coor)
             box_loss = obj_mask * box_loss_scale * (1 - giou)
+            box_loss = tf.reduce_sum(box_loss, axis=(1, 2, 3))
         elif self.use_ciou_loss:
             ciou = self.ciou(pred_box_coor, true_box_coor)
             box_loss = obj_mask * box_loss_scale * (1 - ciou)
+            box_loss = tf.reduce_sum(box_loss, axis=(1, 2, 3))
         else:
             # traditional loss for xy and wh
             pred_xy = pred_raw_box[..., 0:2]
@@ -256,10 +258,11 @@ class YOLOv4Loss(Loss):
             wh_loss = obj_mask * box_loss_scale * \
                       tf.reduce_sum(tf.square(true_wh - pred_wh), axis=-1)
 
+            xy_loss = tf.reduce_sum(xy_loss, axis=(1, 2, 3))
+            wh_loss = tf.reduce_sum(wh_loss, axis=(1, 2, 3))
             box_loss = xy_loss + wh_loss
 
         # sum of all loss
-        box_loss = tf.reduce_sum(box_loss, axis=(1, 2, 3))
         confidence_loss = tf.reduce_sum(confidence_loss, axis=(1, 2, 3))
         class_loss = tf.reduce_sum(class_loss, axis=(1, 2, 3))
 

@@ -15,6 +15,7 @@ from metrics.mean_average_precision.detection_map import DetectionMAP
 from model.loss import YOLOv4Loss
 from model.utils import non_max_suppression
 from model.yolov4 import YOLOv4
+from utils.lr_schedule import WarmUpLinearCosineDecay
 
 try:
     physical_devices = tf.config.experimental.list_physical_devices("GPU")
@@ -24,20 +25,19 @@ except:
 
 
 class Trainer:
-    def __init__(self, batch_size: int, sub_division: int, image_size: int):
+    def __init__(self, batch_size: int, image_size: int):
         # setup anchors
         cfg.anchors.set_image_size(image_size)
 
         # dataset
-        dataset_train = COCO2017Dataset(image_size=image_size, batch_size=batch_size // sub_division)
+        dataset_train = COCO2017Dataset(image_size=image_size, batch_size=batch_size)
         dataset_val = COCO2017Dataset(mode=tfds.Split.VALIDATION, image_size=image_size,
-                                      batch_size=batch_size // sub_division)
+                                      batch_size=batch_size)
         self.dataset_train = dataset_train.get_dataset()
         self.dataset_val = dataset_val.get_dataset()
 
         # parameters
         self.batch_size = batch_size
-        self.sub_division = sub_division
         self.image_size = image_size
         self.buffer_size = cfg.buffer_size
         self.prefetch_size = cfg.prefetch_size
@@ -45,17 +45,18 @@ class Trainer:
         self.yolo_iou_threshold = cfg.yolo_iou_threshold
         self.yolo_score_threshold = cfg.yolo_score_threshold
         self.label_smoothing_factor = cfg.label_smoothing_factor
-        self.lr_init = cfg.lr_init / self.batch_size
+        self.lr_init = cfg.lr_init
         self.lr_end = cfg.lr_end
         self.warmup_epochs = cfg.warmup_epochs
         self.train_epochs = cfg.train_epochs
         self.warmup_steps = self.warmup_epochs * dataset_train.num_of_img / self.batch_size
         self.total_steps = self.train_epochs * dataset_train.num_of_img / self.batch_size
-        self.step_to_validate = cfg.step_to_validate
+        self.step_to_log = cfg.step_to_log
 
         # define model and loss
         self.model = YOLOv4(num_class=self.num_class)
-        self.optimizer = tf.keras.optimizers.Adam(learning_rate=self.lr_init)
+        self.lr_scheduler = WarmUpLinearCosineDecay(warmup_steps=self.warmup_steps, decay_steps=self.total_steps, initial_learning_rate=self.lr_init)
+        self.optimizer = tf.keras.optimizers.Adam(learning_rate=self.lr_scheduler)
         self.checkpoint_dir = './checkpoints/yolov4_train.tf'
         self.ckpt = tf.train.Checkpoint(step=tf.Variable(1), optimizer=self.optimizer, net=self.model)
         self.manager = tf.train.CheckpointManager(self.ckpt, self.checkpoint_dir, max_to_keep=5)
@@ -67,8 +68,8 @@ class Trainer:
 
         # summary writer
         self.current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        self.train_log_dir = 'logs/yolov4/' + self.current_time + '/train'
-        self.val_log_dir = 'logs/yolov4/' + self.current_time + '/val'
+        self.train_log_dir = 'logs/yolov4/train'
+        self.val_log_dir = 'logs/yolov4/val'
         self.train_summary_writer = tf.summary.create_file_writer(self.train_log_dir)
         self.val_summary_writer = tf.summary.create_file_writer(self.val_log_dir)
 
@@ -108,40 +109,6 @@ class Trainer:
 
         return np.expand_dims(image, 0)
 
-    def accumulated_gradients(self, gradients: Optional[List[tf.Tensor]],
-                              step_gradients: List[Union[tf.Tensor, tf.IndexedSlices]]) -> List[tf.Tensor]:
-        if gradients is None:
-            gradients = [self.flat_gradients(g) for g in step_gradients]
-        else:
-            for i, g in enumerate(step_gradients):
-                gradients[i] += self.flat_gradients(g)
-
-        return gradients
-
-    # This is needed for tf.gather like operations.
-    def flat_gradients(self, grads_or_idx_slices: tf.Tensor) -> tf.Tensor:
-        '''Convert gradients if it's tf.IndexedSlices.
-        When computing gradients for operation concerning `tf.gather`, the type of gradients
-        '''
-        if type(grads_or_idx_slices) == tf.IndexedSlices:
-            return tf.scatter_nd(
-                tf.expand_dims(grads_or_idx_slices.indices, 1),
-                grads_or_idx_slices.values,
-                grads_or_idx_slices.dense_shape
-            )
-        return grads_or_idx_slices
-
-    def update_learning_rate(self):
-        global_steps = int(self.ckpt.step)
-        if global_steps < self.warmup_steps:
-            lr = global_steps / self.warmup_steps * self.lr_init
-        else:
-            lr = self.lr_end + 0.5 * (self.lr_init - self.lr_end) * (
-                (1 + tf.cos((global_steps - self.warmup_steps) / (self.total_steps - self.warmup_steps) * np.pi))
-            )
-
-        self.optimizer.lr.assign(float(lr))
-
     @tf.function
     def validation(self, x: tf.Tensor, y: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
         # calculate loss from validation dataset
@@ -158,14 +125,18 @@ class Trainer:
         with tf.GradientTape() as tape:
             pred = self.model(x, training=True)
             pred_loss = self.loss_fn(y_pred=pred, y_true=y)
+            regularization_loss = tf.reduce_sum(self.model.losses)
+            total_loss = pred_loss + regularization_loss
 
-        grads = tape.gradient(pred_loss, self.model.trainable_variables)
+        grads = tape.gradient(total_loss, self.model.trainable_variables)
+        self.optimizer.apply_gradients(
+            zip(grads, self.model.trainable_variables))
 
-        return grads
+        return pred_loss
 
     def log_metrics(self, writer: tf.summary.SummaryWriter, dataset: tf.data.Dataset):
         batch_loss = tf.Variable(0.0, dtype=tf.float32)
-        for _ in range(self.sub_division):
+        for _ in range(self.batch_size):
             data = next(iter(dataset))
             loss, bboxes, scores, class_ids, valid_detections = self.validation(data['image'], data['label'])
 
@@ -201,43 +172,22 @@ class Trainer:
                                           num_of_gt_boxes)
 
         # log tensorboard
+        step = int(self.ckpt.step)
         with writer.as_default():
-            tf.summary.scalar("lr", self.optimizer.lr, step=int(self.ckpt.step))
-            tf.summary.scalar('loss', batch_loss, step=int(self.ckpt.step))
+            tf.summary.scalar("lr", self.optimizer.lr(step), step=step)
+            tf.summary.scalar('loss', batch_loss, step=step)
             tf.summary.scalar('mean loss', batch_loss.numpy() / self.batch_size,
-                              step=int(self.ckpt.step))
-            tf.summary.scalar('mAP@0.5', mean_average_precision, step=int(self.ckpt.step))
-            tf.summary.image("Display pred bounding box", pred_image, step=int(self.ckpt.step))
-            tf.summary.image("Display gt bounding box", gt_image, step=int(self.ckpt.step))
+                              step=step)
+            tf.summary.scalar('mAP@0.5', mean_average_precision, step=step)
+            tf.summary.image("Display pred bounding box", pred_image, step=step)
+            tf.summary.image("Display gt bounding box", gt_image, step=step)
 
     def train_one_epoch(self):
-        start_step = 0
-        gradients = None
         for data in self.dataset_train:
-            step_gradients = self.train_one_step(data['image'], data['label'])
-            # update step
-            start_step += 1
-
-            # accumulate gradient
-            gradients = self.accumulated_gradients(gradients, step_gradients)
-
-            # apply gradient decent for every sub division
-            if start_step % self.sub_division == 0:
-                gradient_zip = zip(gradients, self.model.trainable_variables)
-                self.optimizer.apply_gradients(gradient_zip)
-
-                # reset variable
-                gradients = None
-                start_step = 0
-
-                # update steps
-                self.ckpt.step.assign_add(1)
-
-                # update lr
-                self.update_learning_rate()
+            loss = self.train_one_step(data['image'], data['label'])
 
             # validation every i steps
-            if int(self.ckpt.step) % self.step_to_validate == 0 and start_step == 0:
+            if int(self.ckpt.step) % self.step_to_log == 0:
                 self.log_metrics(self.train_summary_writer, self.dataset_train)
                 self.log_metrics(self.val_summary_writer, self.dataset_val)
 
@@ -262,13 +212,11 @@ class Trainer:
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train detection model')
     parser.add_argument('-b', '--batch_size', type=int, default=cfg.batch_size, help='Batch size')
-    parser.add_argument('-s', '--sub', type=int, default=cfg.sub_division, help='sub division size')
     parser.add_argument('-i', '--image_size', type=int, default=cfg.image_size, help='Reshape size of the image')
     args = parser.parse_args()
 
     trainer = Trainer(
         batch_size=args.batch_size,
-        sub_division=args.sub,
         image_size=args.image_size
     )
 
