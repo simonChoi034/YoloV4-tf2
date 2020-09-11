@@ -135,33 +135,29 @@ class Trainer:
         return pred_loss
 
     def log_metrics(self, writer: tf.summary.SummaryWriter, dataset: tf.data.Dataset):
-        batch_loss = tf.Variable(0.0, dtype=tf.float32)
-        for _ in range(self.batch_size):
-            data = next(iter(dataset))
-            loss, bboxes, scores, class_ids, valid_detections = self.validation(data['image'], data['label'])
+        data = next(iter(dataset))
+        loss, bboxes, scores, class_ids, valid_detections = self.validation(data['image'], data['label'])
 
-            gt_boxes = data["bbox"]
-            num_of_gt_boxes = data["num_of_bbox"]
+        gt_boxes = data["bbox"]
+        num_of_gt_boxes = data["num_of_bbox"]
 
-            batch_loss = batch_loss + loss
+        # calculate mAP
+        for frame in zip(bboxes.numpy(), class_ids.numpy(), scores.numpy(), valid_detections.numpy(),
+                         gt_boxes.numpy(),
+                         num_of_gt_boxes.numpy()):
+            pred_bbox, pred_cls, pred_score, valid_detection, gt_box, num_of_gt_box = frame
 
-            # calculate mAP
-            for frame in zip(bboxes.numpy(), class_ids.numpy(), scores.numpy(), valid_detections.numpy(),
-                             gt_boxes.numpy(),
-                             num_of_gt_boxes.numpy()):
-                pred_bbox, pred_cls, pred_score, valid_detection, gt_box, num_of_gt_box = frame
+            # get all predicion and label
+            pred_bbox = pred_bbox[:valid_detection]
+            pred_cls = pred_cls[:valid_detection]
+            pred_score = pred_score[:valid_detection]
+            gt_box = gt_box[:num_of_gt_box]
+            gt_bbox = gt_box[..., :4]
+            gt_class_id = gt_box[..., 4]
 
-                # get all predicion and label
-                pred_bbox = pred_bbox[:valid_detection]
-                pred_cls = pred_cls[:valid_detection]
-                pred_score = pred_score[:valid_detection]
-                gt_box = gt_box[:num_of_gt_box]
-                gt_bbox = gt_box[..., :4]
-                gt_class_id = gt_box[..., 4]
-
-                #
-                frame = pred_bbox, pred_cls, pred_score, gt_bbox, gt_class_id
-                self.mAP.evaluate(*frame)
+            #
+            frame = pred_bbox, pred_cls, pred_score, gt_bbox, gt_class_id
+            self.mAP.evaluate(*frame)
 
         mean_average_precision = self.mAP.get_mAP()
         self.mAP.reset_accumulators()
@@ -175,8 +171,8 @@ class Trainer:
         step = int(self.ckpt.step)
         with writer.as_default():
             tf.summary.scalar("lr", self.optimizer.lr(step), step=step)
-            tf.summary.scalar('loss', batch_loss, step=step)
-            tf.summary.scalar('mean loss', batch_loss.numpy() / self.batch_size,
+            tf.summary.scalar('loss', loss, step=step)
+            tf.summary.scalar('mean loss', loss.numpy() / self.batch_size,
                               step=step)
             tf.summary.scalar('mAP@0.5', mean_average_precision, step=step)
             tf.summary.image("Display pred bounding box", pred_image, step=step)
