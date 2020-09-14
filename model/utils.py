@@ -41,7 +41,7 @@ def flatten_output(outputs: Tuple[tf.Tensor, tf.Tensor, tf.Tensor]) -> Tuple[tf.
 
 @tf.function
 def non_max_suppression(inputs: Tuple[tf.Tensor, tf.Tensor, tf.Tensor], iou_threshold: float = cfg.yolo_iou_threshold,
-                        score_threshold: float = cfg.yolo_score_threshold) -> Tuple[
+                        score_threshold: float = cfg.yolo_score_threshold, max_bbox_size: int = cfg.max_bbox_size) -> Tuple[
     tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
     anchors = cfg.anchors.get_anchors()
     anchor_masks = cfg.anchors.get_anchor_masks()
@@ -66,8 +66,8 @@ def non_max_suppression(inputs: Tuple[tf.Tensor, tf.Tensor, tf.Tensor], iou_thre
     bboxes, scores, classes, valid_detections = tf.image.combined_non_max_suppression(
         boxes=tf.reshape(bbox, (tf.shape(bbox)[0], -1, 1, 4)),
         scores=tf.reshape(scores, (tf.shape(scores)[0], -1, tf.shape(scores)[-1])),
-        max_output_size_per_class=100,
-        max_total_size=100,
+        max_output_size_per_class=max_bbox_size,
+        max_total_size=max_bbox_size,
         iou_threshold=iou_threshold,
         score_threshold=score_threshold
     )

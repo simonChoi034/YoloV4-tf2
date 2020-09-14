@@ -9,10 +9,10 @@ from tensorflow.keras import backend as K
 from config import cfg
 
 
-class COCO2017Dataset:
+class WiderFaceDatset:
     def __init__(
             self,
-            dataset: str = "coco/2017",
+            dataset: str = "wider_face",
             mode: Any = tfds.Split.TRAIN,
             image_size: int = cfg.image_size,
             batch_size: int = cfg.batch_size,
@@ -20,7 +20,7 @@ class COCO2017Dataset:
             prefetch_size: int = cfg.prefetch_size,
             max_bbox_size: int = cfg.max_bbox_size
     ):
-        self.dataset = tfds.load(name=dataset, split=mode)
+        self.dataset = tfds.load(name=dataset, split=mode, shuffle_files=True)
         self.image_size = image_size  # [height, width]
         self.batch_size = batch_size
         self.buffer_size = buffer_size
@@ -28,23 +28,27 @@ class COCO2017Dataset:
         self.max_bbox_size = max_bbox_size
         self.anchors = cfg.anchors.get_anchors()
         self.anchor_masks = cfg.anchors.get_anchor_masks()
-        self.num_of_img = 118287 if mode == tfds.Split.TRAIN else 5000
-        self.num_class = 80
+        self.num_of_img = 12880 if mode == tfds.Split.TRAIN else 3226
+        self.num_class = 3
 
     def map_func(self, feature: tf.Tensor) -> Dict:
         image = feature["image"]
-        bbox = feature["objects"]["bbox"]
+
+        # limit the number of bounding box and label
+        bbox = feature["faces"]["bbox"]
+        bbox = bbox[:self.max_bbox_size]
+
         num_of_bbox = tf.shape(bbox)[0]
+        label = feature["faces"]["occlusion"]
+        label = label[:self.max_bbox_size]
 
         original_image_size = tf.shape(image)[0:2]
         bbox = tf.numpy_function(self.transform_bbox, inp=[bbox, original_image_size], Tout=tf.float32)
 
-        label_small, label_medium, label_large = tf.numpy_function(self.map_label_func,
-                                                                   inp=[bbox, feature["objects"]["label"]],
-                                                                   Tout=[tf.float32, tf.float32, tf.float32])
+        label_small, label_medium, label_large = tf.numpy_function(self.map_label_func, inp=[bbox, label], Tout=[tf.float32, tf.float32, tf.float32])
         image = self.map_image_func(image)
 
-        bbox = self.pad_class(bbox, feature["objects"]["label"])
+        bbox = self.pad_class(bbox, label)
         bbox = self.pad_bbox(bbox)
 
         feature_dict = {
@@ -88,13 +92,13 @@ class COCO2017Dataset:
 
         return label_small, label_medium, label_large
 
-    def map_image_func(self, image: np.ndarray) -> tf.Tensor:
+    def map_image_func(self, image: tf.Tensor) -> tf.Tensor:
         img = tf.image.resize(image, (self.image_size, self.image_size), preserve_aspect_ratio=True)
         img = tf.image.pad_to_bounding_box(img, 0, 0, self.image_size, self.image_size)
-        img = tf.image.random_brightness(img, max_delta=0.25)
-        img = tf.image.random_contrast(img, lower=0.4, upper=1.3)
-        img = tf.image.random_hue(img, max_delta=0.2)
-        img = tf.image.random_saturation(img, lower=0, upper=4)
+        #img = tf.image.random_brightness(img, max_delta=0.25)
+        #img = tf.image.random_contrast(img, lower=0.4, upper=1.3)
+        #img = tf.image.random_hue(img, max_delta=0.2)
+        #img = tf.image.random_saturation(img, lower=0, upper=4)
 
         img = img / 127.5 - 1  # normalize to [-1, 1]
 
@@ -164,7 +168,7 @@ class COCO2017Dataset:
         return label
 
     def get_dataset(self):
-        dataset = self.dataset.filter(lambda x: tf.shape(x["objects"]["bbox"])[0] != 0) \
+        dataset = self.dataset.filter(lambda x: tf.shape(x["faces"]["bbox"])[0] != 0) \
             .map(self.map_func) \
             .shuffle(self.buffer_size) \
             .batch(self.batch_size) \

@@ -10,7 +10,9 @@ import tensorflow_datasets as tfds
 
 from config import cfg
 from dataset.coco_classes import coco_classes
+from dataset.wider_face_classes import wider_face_classes
 from dataset.yolov4_coco_dataset import COCO2017Dataset
+from dataset.yolov4_wider_face_dataset import WiderFaceDatset
 from metrics.mean_average_precision.detection_map import DetectionMAP
 from model.loss import YOLOv4Loss
 from model.utils import non_max_suppression
@@ -30,18 +32,18 @@ class Trainer:
         cfg.anchors.set_image_size(image_size)
 
         # dataset
-        dataset_train = COCO2017Dataset(image_size=image_size, batch_size=batch_size)
-        dataset_val = COCO2017Dataset(mode=tfds.Split.VALIDATION, image_size=image_size,
-                                      batch_size=batch_size)
+        dataset_train = self.create_dataset_generator(dataset=cfg.dataset, mode=tfds.Split.TRAIN, image_size=image_size, batch_size=batch_size)
+        dataset_val = self.create_dataset_generator(dataset=cfg.dataset, mode=tfds.Split.VALIDATION, image_size=image_size, batch_size=batch_size)
         self.dataset_train = dataset_train.get_dataset()
         self.dataset_val = dataset_val.get_dataset()
+        self.class_names = self.create_class_names(dataset=cfg.dataset)
 
         # parameters
         self.batch_size = batch_size
         self.image_size = image_size
         self.buffer_size = cfg.buffer_size
         self.prefetch_size = cfg.prefetch_size
-        self.num_class = cfg.num_class
+        self.num_class = dataset_train.num_class
         self.yolo_iou_threshold = cfg.yolo_iou_threshold
         self.yolo_score_threshold = cfg.yolo_score_threshold
         self.label_smoothing_factor = cfg.label_smoothing_factor
@@ -73,6 +75,21 @@ class Trainer:
         self.train_summary_writer = tf.summary.create_file_writer(self.train_log_dir)
         self.val_summary_writer = tf.summary.create_file_writer(self.val_log_dir)
 
+    def create_dataset_generator(self, dataset, image_size, batch_size, mode):
+        if dataset == "coco":
+            return COCO2017Dataset(image_size=image_size, batch_size=batch_size, mode=mode)
+        elif dataset == "wider_face":
+            return WiderFaceDatset(image_size=image_size, batch_size=batch_size, mode=mode)
+        else:
+            print("Unknown dataset!")
+            exit(1)
+
+    def create_class_names(self, dataset):
+        if dataset == "coco":
+            return coco_classes
+        elif dataset == "wider_face":
+            return wider_face_classes
+
     def plot_bounding_box(self, images: tf.Tensor, bboxes, scores, class_ids, valid_detections):
         image = images.numpy()[0]
         valid_detection = valid_detections.numpy()[0]
@@ -100,7 +117,7 @@ class Trainer:
             bbox_thick = int(0.6 * (image_h + image_w) / self.image_size)
             cv2.rectangle(image, (x1, y1), (x2, y2), colors[cls], bbox_thick)
 
-            bbox_mess = '%s: %.2f' % (coco_classes[cls], sc)
+            bbox_mess = '%s: %.2f' % (self.class_names[cls], sc)
             t_size = cv2.getTextSize(bbox_mess, 0, fontScale, thickness=bbox_thick // 2)[0]
             cv2.rectangle(image, (x1, y1), (x1 + t_size[0], y1 - t_size[1] - 3), colors[cls], -1)  # filled
 
