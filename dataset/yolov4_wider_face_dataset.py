@@ -29,7 +29,7 @@ class WiderFaceDatset:
         self.anchors = cfg.anchors.get_anchors()
         self.anchor_masks = cfg.anchors.get_anchor_masks()
         self.num_of_img = 12880 if mode == tfds.Split.TRAIN else 3226
-        self.num_class = 3
+        self.num_class = 1
 
     def map_func(self, feature: tf.Tensor) -> Dict:
         image = feature["image"]
@@ -39,7 +39,7 @@ class WiderFaceDatset:
         bbox = bbox[:self.max_bbox_size]
 
         num_of_bbox = tf.shape(bbox)[0]
-        label = feature["faces"]["occlusion"]
+        label = tf.zeros(num_of_bbox, dtype=tf.int32)
         label = label[:self.max_bbox_size]
 
         original_image_size = tf.shape(image)[0:2]
@@ -95,7 +95,7 @@ class WiderFaceDatset:
     def map_image_func(self, image: tf.Tensor) -> tf.Tensor:
         img = tf.image.resize(image, (self.image_size, self.image_size), preserve_aspect_ratio=True)
         img = tf.image.pad_to_bounding_box(img, 0, 0, self.image_size, self.image_size)
-        #img = tf.image.random_brightness(img, max_delta=0.25)
+        img = tf.image.random_brightness(img, max_delta=0.25)
         #img = tf.image.random_contrast(img, lower=0.4, upper=1.3)
         #img = tf.image.random_hue(img, max_delta=0.2)
         #img = tf.image.random_saturation(img, lower=0, upper=4)
