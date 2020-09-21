@@ -4,8 +4,7 @@ import tensorflow as tf
 from tensorflow.keras import Sequential
 from tensorflow.keras import backend as K
 from tensorflow.keras.layers import Layer, Conv2D, LeakyReLU, Concatenate, MaxPool2D, UpSampling2D, \
-    Activation, ReLU
-from tensorflow_addons.layers.normalizations import GroupNormalization
+    Activation, ReLU, BatchNormalization
 
 
 class DropBlock(Layer):
@@ -109,6 +108,7 @@ class MyConv2D(Layer):
             strides,
             dilation_rate=dilation_rate,
             padding=padding,
+            kernel_regularizer=tf.keras.regularizers.l2(0.0005),
             kernel_initializer=tf.initializers.GlorotNormal(),
             use_bias=False
         )
@@ -116,16 +116,16 @@ class MyConv2D(Layer):
         self.apply_activation = activation is not None
         self.apply_batchnorm = apply_batchnorm
         self.apply_dropblock = apply_dropblock
-        self.batch_norm = GroupNormalization(groups=32)
+        self.batch_norm = BatchNormalization()
         self.drop_block = DropBlock(keep_prob=keep_prob, block_size=dropblock_size)
 
     def call(self, inputs: tf.Tensor, training: bool = False, **kwargs) -> tf.Tensor:
-        x = self.conv2d(inputs)
+        x = self.conv2d(inputs, training=training)
         if self.apply_batchnorm:
             x = self.batch_norm(x, training=training)
 
         if self.apply_activation:
-            x = self.activation(x)
+            x = self.activation(x, training=training)
 
         if self.apply_dropblock:
             x = self.drop_block(x, training=training)
@@ -232,8 +232,7 @@ class DownSampling(Layer):
 class SpatialAttention(Layer):
     def __init__(self, name='spatial-attention', **kwargs):
         super(SpatialAttention, self).__init__(name=name, **kwargs)
-        self.spatial_conv = MyConv2D(filters=1, kernel_size=7, activation="sigmoid", apply_dropblock=False,
-                                     apply_batchnorm=False)
+        self.spatial_conv = MyConv2D(filters=1, kernel_size=7, activation="sigmoid", apply_dropblock=False)
 
     def call(self, inputs: tf.Tensor, training: bool = False, **kwargs):
         # spatial attention

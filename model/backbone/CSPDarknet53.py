@@ -1,6 +1,8 @@
 from typing import Tuple
 
-from model.layer import *
+import tensorflow as tf
+
+from model.layer import CSPStage, MyConv2D
 
 
 class CSPDarknet53(tf.keras.Model):

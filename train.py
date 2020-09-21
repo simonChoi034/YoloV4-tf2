@@ -1,7 +1,7 @@
 import argparse
 import colorsys
 import datetime
-from typing import List, Optional, Union, Tuple
+from typing import List, Tuple
 
 import cv2
 import numpy as np
@@ -32,8 +32,10 @@ class Trainer:
         cfg.anchors.set_image_size(image_size)
 
         # dataset
-        dataset_train = self.create_dataset_generator(dataset=cfg.dataset, mode=tfds.Split.TRAIN, image_size=image_size, batch_size=batch_size)
-        dataset_val = self.create_dataset_generator(dataset=cfg.dataset, mode=tfds.Split.VALIDATION, image_size=image_size, batch_size=batch_size)
+        dataset_train = self.create_dataset_generator(dataset=cfg.dataset, mode=tfds.Split.TRAIN, image_size=image_size,
+                                                      batch_size=batch_size)
+        dataset_val = self.create_dataset_generator(dataset=cfg.dataset, mode=tfds.Split.VALIDATION,
+                                                    image_size=image_size, batch_size=batch_size)
         self.dataset_train = dataset_train.get_dataset()
         self.dataset_val = dataset_val.get_dataset()
         self.class_names = self.create_class_names(dataset=cfg.dataset)
@@ -47,8 +49,8 @@ class Trainer:
         self.yolo_iou_threshold = cfg.yolo_iou_threshold
         self.yolo_score_threshold = cfg.yolo_score_threshold
         self.label_smoothing_factor = cfg.label_smoothing_factor
-        self.lr_init = cfg.lr_init
-        self.lr_end = cfg.lr_end
+        self.lr_init = cfg.lr_init / self.batch_size
+        self.lr_end = cfg.lr_end / self.batch_size
         self.warmup_epochs = cfg.warmup_epochs
         self.train_epochs = cfg.train_epochs
         self.warmup_steps = self.warmup_epochs * dataset_train.num_of_img / self.batch_size
@@ -57,13 +59,15 @@ class Trainer:
 
         # define model and loss
         self.model = YOLOv4(num_class=self.num_class)
-        self.lr_scheduler = WarmUpLinearCosineDecay(warmup_steps=self.warmup_steps, decay_steps=self.total_steps, initial_learning_rate=self.lr_init)
-        self.optimizer = tf.keras.optimizers.Adam(learning_rate=self.lr_scheduler)
+        self.lr_scheduler = WarmUpLinearCosineDecay(warmup_steps=self.warmup_steps, decay_steps=self.total_steps,
+                                                    initial_learning_rate=self.lr_init)
+        self.optimizer = tf.keras.optimizers.Adam(learning_rate=self.lr_scheduler, clipnorm=1.0)
         self.checkpoint_dir = './checkpoints/yolov4_train.tf'
         self.ckpt = tf.train.Checkpoint(step=tf.Variable(1), optimizer=self.optimizer, net=self.model)
         self.manager = tf.train.CheckpointManager(self.ckpt, self.checkpoint_dir, max_to_keep=5)
         self.loss_fn = YOLOv4Loss(num_class=self.num_class, yolo_iou_threshold=self.yolo_iou_threshold,
-                                  label_smoothing_factor=self.label_smoothing_factor, use_ciou_loss=True)
+                                  label_smoothing_factor=self.label_smoothing_factor, use_ciou_loss=True,
+                                  use_focal_obj_loss=True)
 
         # metrics
         self.mAP = DetectionMAP(self.num_class)

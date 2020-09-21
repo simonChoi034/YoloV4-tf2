@@ -1,7 +1,11 @@
 from typing import Tuple
 
+import tensorflow as tf
+from tensorflow.keras import Sequential
+from tensorflow.keras.layers import Layer, Concatenate
+
 from model.backbone.CSPDarknet53 import CSPDarknet53
-from model.layer import *
+from model.layer import MyConv2D, SpatialPyramidPooling, SpatialAttention, DownSampling, UpSampling
 
 
 # *** small scale = stride 32 output; medium scale = stride 16 output; large scale = stride 8 output
@@ -126,8 +130,8 @@ class YOLOv4Head(Layer):
 
         self.concat = Concatenate()
 
-    def yolo_output(self, input: tf.Tensor, conv: Layer, training: bool = False) -> tf.Tensor:
-        x = conv(input, training=training)
+    def yolo_output(self, inputs: tf.Tensor, conv: Layer, training: bool = False) -> tf.Tensor:
+        x = conv(inputs, training=training)
         x = tf.reshape(
             x,
             (-1, tf.shape(x)[1], tf.shape(x)[2], 3, self.num_class + 5)
